@@ -1,6 +1,11 @@
-// gameConfig.js
-// Este archivo define la configuración global del juego en Phaser.
-// Aquí se establecen resolución retro, escalado, físicas y escenas iniciales.
+/**
+ * src/config/gameConfig.js
+ * 
+ * Configuración global del juego en Phaser.
+ * Establece: resolución retro, escalado, físicas y escenas iniciales.
+ */
+
+import Phaser from 'phaser';
 
 export const gameConfig = {
   type: Phaser.AUTO, // Detecta automáticamente WebGL o Canvas
@@ -17,3 +22,4 @@ export const gameConfig = {
   },
   scene: [] // Se llenará con las escenas (BootScene, MenuScene, etc.)
 };
+

@@ -2,6 +2,8 @@
 // Esta escena muestra el menú principal con estética retro Nokia.
 // Permite iniciar el partido al presionar ENTER.
 
+import Phaser from 'phaser';
+
 export default class MenuScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MenuScene' });

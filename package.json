@@ -1,19 +1,27 @@
 {
   "name": "soccerleaguenok",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Nokia Soccer League - Phaser 3 Game",
+  "type": "module",
+  "main": "src/main.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KevL14/SoccerLeagueNok.git"
   },
-  "keywords": [],
+  "keywords": [
+    "phaser",
+    "game",
+    "nokia",
+    "soccer"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/KevL14/SoccerLeagueNok/issues"
   },
