@@ -54,21 +54,24 @@ export default class HUD {
    */
   drawPixelText(x, y, text, color, centered = false, rightAligned = false) {
     const container = this.scene.add.container(x, y).setScrollFactor(0).setDepth(32);
-    const chars = text.toUpperCase().split('');
-    const charW = 4; // 3px + 1px espacio fijo
-    
-    // Calculamos el ancho total basándonos en charW fijo para evitar saltos de 0.5px
-    let totalW = chars.length * charW;
-    let startX = centered ? -Math.floor(totalW / 2) : (rightAligned ? -totalW : 0);
+    const lines = text.toUpperCase().split('\n');
+    const charW = 4;
+    const lineH = 7;
 
-    chars.forEach((char, i) => {
-      const key = `font_${char}`;
-      if (this.scene.textures.exists(key)) {
-        // Posicionamiento absoluto de píxeles
-        const s = this.scene.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
-        s.setTint(color);
-        container.add(s);
-      }
+    lines.forEach((line, lineIdx) => {
+      const chars = line.split('');
+      let totalW = chars.length * charW;
+      let startX = centered ? -Math.floor(totalW / 2) : (rightAligned ? -totalW : 0);
+      let startY = lineIdx * lineH;
+
+      chars.forEach((char, i) => {
+        const key = `font_${char}`;
+        if (this.scene.textures.exists(key)) {
+          const s = this.scene.add.sprite(startX + i * charW, startY, key).setOrigin(0, 0.5);
+          s.setTint(color);
+          container.add(s);
+        }
+      });
     });
     return container;
   }
@@ -99,6 +102,26 @@ export default class HUD {
     if (!this.possessionIndicator) return;
     this.possessionIndicator.destroy();
     this.possessionIndicator = this.drawPixelText(team === 'home' ? 4 : 72, 6, team === 'home' ? '>' : '<', 0x4dff4d);
+  }
+
+  showHalfTimeStats(text) {
+    this.hideAnnouncement();
+    if (this.statsContainer) this.statsContainer.destroy();
+    
+    // Centrar en pantalla (40, 60 aprox)
+    this.statsContainer = this.drawPixelText(40, 45, text, 0x4dff4d, true);
+    
+    // Fondo más grande para las estadísticas
+    if (!this.statsBg) {
+      this.statsBg = this.scene.add.rectangle(40, 60, 78, 50, 0x000000, 0.9);
+      this.statsBg.setOrigin(0.5).setScrollFactor(0).setDepth(31).setStrokeStyle(1, 0x4dff4d, 0.6);
+    }
+    this.statsBg.setVisible(true);
+  }
+
+  hideHalfTimeStats() {
+    if (this.statsContainer) this.statsContainer.setVisible(false);
+    if (this.statsBg) this.statsBg.setVisible(false);
   }
 
   showAnnouncement(text, duration = 0) {

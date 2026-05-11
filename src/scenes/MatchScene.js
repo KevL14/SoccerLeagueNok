@@ -41,6 +41,13 @@ export default class MatchScene extends Phaser.Scene {
     this.halfTimeReached     = false;
     this.fullTimeReached     = false;
     this.isWaitingForHalfTimeResume = false;
+
+    // Estadísticas
+    this.stats = {
+      home: { possession: 0, shots: 0 },
+      away: { possession: 0, shots: 0 }
+    };
+    this.lastTeamInPossession = null;
   }
 
   create() {
@@ -420,8 +427,56 @@ export default class MatchScene extends Phaser.Scene {
         }
 
         this.scoreSystem.goal(scoringTeam);
+        this.stats[scoringTeam].shots++;
       }
     });
+  }
+
+  onGoalScored(team) {
+    this.matchPaused = true;
+    this.isScoring   = true;
+    
+    // Detener todo el movimiento actual
+    this.homeTeam.stopAll();
+    this.awayTeam.stopAll();
+    this.ball.stop();
+    
+    // Confeti detrás de la portería
+    const goalSide = team === 'home' ? 'bottom' : 'top';
+    this._createConfetti(goalSide);
+
+    // Los jugadores del equipo que marcó celebran
+    const scoringTeam = team === 'home' ? this.homeTeam : this.awayTeam;
+    scoringTeam.getAllPlayers().forEach(p => p.startCelebration(1500));
+    scoringTeam.goalkeeper.performSave(); // Reusar el destello para el portero
+
+    // Reiniciar tras 1.5 segundos
+    this.time.delayedCall(1500, () => {
+      this.resetMatch(team);
+    });
+  }
+
+  _createConfetti(side) {
+    const y = side === 'top' ? FIELD.TOP - 5 : FIELD.BOTTOM + 5;
+    const colors = [0xffffff, 0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
+    
+    for (let i = 0; i < 30; i++) {
+      const rx = FIELD.X + (Math.random() - 0.5) * FIELD.GOAL_W * 1.5;
+      const ry = y + (Math.random() - 0.5) * 10;
+      const color = Phaser.Utils.Array.GetRandom(colors);
+      
+      const p = this.add.rectangle(rx, ry, 2, 2, color).setDepth(20);
+      
+      this.tweens.add({
+        targets: p,
+        y: ry + (side === 'top' ? -20 : 20),
+        x: rx + (Math.random() - 0.5) * 10,
+        angle: 360,
+        alpha: 0,
+        duration: 1000 + Math.random() * 500,
+        onComplete: () => p.destroy()
+      });
+    }
   }
 
   _applyTackle(tackler, victim) {
@@ -443,6 +498,7 @@ export default class MatchScene extends Phaser.Scene {
 
     this.ballOwner            = player;
     this.lastPossessionChange = this.time.now;
+    this.lastTeamInPossession = player.team;
     player.setBallPossession(true);
     this.events.emit('updatePossession', player.team);
 
@@ -457,6 +513,10 @@ export default class MatchScene extends Phaser.Scene {
   _onGoalkeeperSave(goalkeeper) {
     if (this._goalieHoldingBall)     return;
     if (goalkeeper.saveCooldown > 0) return;
+
+    // Registrar tiro a puerta para el equipo contrario
+    const shootingTeam = goalkeeper.team === 'home' ? 'away' : 'home';
+    this.stats[shootingTeam].shots++;
 
     this._goalieHoldingBall = true;
     this._holdingGoalie     = goalkeeper;
@@ -528,6 +588,7 @@ export default class MatchScene extends Phaser.Scene {
     this.awayTeam.resetPositions();
     
     this.isScoring = false;
+    this.matchPaused = false; // DESBLOQUEAR el loop de update
     this.isWaitingForKickoff = true;
     this._prepareKickoff();
   }
@@ -548,7 +609,7 @@ export default class MatchScene extends Phaser.Scene {
     if (!this.matchStarted) return;
 
     if (this.isWaitingForHalfTimeResume) {
-      if (this.inputSystem.isJustPressed('pass')) {
+      if (this.input.keyboard.checkDown(this.input.keyboard.addKey('ENTER'), 500)) {
         this._handleHalfTimeResume();
       }
       return;
@@ -584,6 +645,11 @@ export default class MatchScene extends Phaser.Scene {
         this.fullTimeReached = true;
         this._startFullTime();
         return;
+      }
+
+      // Tracking de posesión (se cuenta al último que tocó el balón)
+      if (this.lastTeamInPossession) {
+        this.stats[this.lastTeamInPossession].possession += delta;
       }
     }
     this.inputSystem.update();
@@ -627,23 +693,62 @@ export default class MatchScene extends Phaser.Scene {
 
   _startHalfTime() {
     this.matchPaused = true;
-    this.events.emit('showAnnouncement', 'HALF TIME - PRESS X');
-    this.isWaitingForHalfTimeResume = true;
     this.homeTeam.stopAll();
     this.awayTeam.stopAll();
     this.ball.stop();
+
+    // Animación de salida: todos al lateral derecho
+    const allPlayers = [
+      ...this.homeTeam.getAllPlayers(),
+      this.homeTeam.goalkeeper,
+      ...this.awayTeam.getAllPlayers(),
+      this.awayTeam.goalkeeper
+    ];
+
+    allPlayers.forEach((p, i) => {
+      this.tweens.add({
+        targets:  p.sprite,
+        x:        FIELD.WORLD_W + 15 + (i % 5) * 4,
+        y:        FIELD.CY + (Math.random() - 0.5) * 30,
+        duration: 2000,
+        ease:     'Linear'
+      });
+    });
+
+    // Calcular porcentajes de posesión
+    const totalPos = this.stats.home.possession + this.stats.away.possession || 1;
+    const homePerc = Math.round((this.stats.home.possession / totalPos) * 100);
+    const awayPerc = 100 - homePerc;
+
+    const statsText = [
+      'HALF TIME STATS',
+      `SCORE: ${this.scoreSystem.homeScore}-${this.scoreSystem.awayScore}`,
+      `SHOTS: ${this.stats.home.shots}-${this.stats.away.shots}`,
+      `POSS: ${homePerc}%-${awayPerc}%`,
+      '',
+      'PRESS ENTER'
+    ].join('\n');
+
+    this.time.delayedCall(1000, () => {
+      this.events.emit('showHalfTimeStats', statsText);
+      this.isWaitingForHalfTimeResume = true;
+    });
   }
 
   _handleHalfTimeResume() {
     this.isWaitingForHalfTimeResume = false;
     this.matchPaused = false;
+    this.events.emit('hideHalfTimeStats');
     
     // El equipo que NO empezó sacando la 1ª parte, saca la 2ª (usualmente el Away)
     this.kickoffTeam = 'away';
 
     this.events.emit('hideAnnouncement');
     
-    // Limpieza previa
+    // Limpieza profunda de estados antes de la animación de entrada
+    this.releaseBallPossession();
+    this.homeTeam.setFormation('defensive');
+    this.awayTeam.setFormation('defensive');
     this.homeTeam.resetPositions();
     this.awayTeam.resetPositions();
     
@@ -659,12 +764,53 @@ export default class MatchScene extends Phaser.Scene {
     this.awayTeam.stopAll();
     this.ball.stop();
 
-    // Lanzar escena de resultados después de 2 segundos
-    this.time.delayedCall(2000, () => {
+    const homeScore = this.scoreSystem.homeScore;
+    const awayScore = this.scoreSystem.awayScore;
+    
+    let winner = null;
+    let loser  = null;
+
+    if (homeScore > awayScore) {
+      winner = this.homeTeam;
+      loser  = this.awayTeam;
+    } else if (awayScore > homeScore) {
+      winner = this.awayTeam;
+      loser  = this.homeTeam;
+    }
+
+    // El ganador celebra
+    if (winner) {
+      winner.getAllPlayers().forEach(p => p.startCelebration(3000));
+      winner.goalkeeper.performSave();
+    }
+
+    // El perdedor sale por el lateral derecho (Y=mitad aprox)
+    if (loser) {
+      loser.getAllPlayers().forEach((p, i) => {
+        this.tweens.add({
+          targets:  p.sprite,
+          x:        FIELD.WORLD_W + 15 + (i * 4),
+          y:        FIELD.CY + (Math.random() - 0.5) * 20,
+          duration: 2500,
+          ease:     'Linear'
+        });
+      });
+      // El portero también sale
+      this.tweens.add({
+        targets: loser.goalkeeper.sprite,
+        x: FIELD.WORLD_W + 10,
+        y: FIELD.CY,
+        duration: 2500,
+        ease: 'Linear'
+      });
+    }
+
+    // Lanzar escena de resultados después de 3 segundos para ver la acción
+    this.time.delayedCall(3000, () => {
       this.scene.pause('MatchScene');
       this.scene.launch('FullTimeScene', {
-        home: this.scoreSystem.homeScore,
-        away: this.scoreSystem.awayScore
+        home: homeScore,
+        away: awayScore
       });
     });
   }

@@ -97,9 +97,11 @@ export default class Team {
       player.sprite.setPosition(finalX, finalY);
       player.sprite.body.setVelocity(0, 0);
       player.setBallPossession(false);
-      player.isFallen   = false;
-      player.isTackling = false;
+      player.isCelebrating = false;
+      player.isFallen      = false;
+      player.isTackling    = false;
       player.sprite.setAngle(0);
+      player.sprite.setScale(1, 1);
       player.sprite.clearTint();
     });
     this.goalkeeper.resetPosition();

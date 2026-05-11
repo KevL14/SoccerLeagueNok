@@ -130,16 +130,57 @@ export default class Player {
   }
 
   // ─── Loop ──────────────────────────────────────────────────────────────────
+  
+  startCelebration(duration = 1500) {
+    if (this.isCelebrating) return;
+    this.isCelebrating = true;
+    this.stop();
+    
+    const basePos = { x: this.sprite.x, y: this.sprite.y };
+    const startTime = this.scene.time.now;
+    
+    // Animación de salto y "brazos" (usando frames y escala)
+    const timer = this.scene.time.addEvent({
+      delay: 100,
+      repeat: Math.floor(duration / 100),
+      callback: () => {
+        const elapsed = this.scene.time.now - startTime;
+        if (elapsed >= duration || !this.isCelebrating) {
+          timer.remove();
+          return;
+        }
+        
+        // Saltar (oscilación relativa a la posición base)
+        const jumpY = (Math.floor(elapsed / 200) % 2 === 0) ? -4 : 0;
+        this.sprite.y = basePos.y + jumpY;
+        
+        // Mover brazos (alternar frames de textura)
+        const frame = (Math.floor(elapsed / 100) % 2);
+        this.sprite.setTexture(`${this.baseTexture}_front_${frame}`);
+        
+        // Escalar un poco para dar sensación de estiramiento
+        this.sprite.setScale(1, 1.2);
+      }
+    });
+
+    this.scene.time.delayedCall(duration, () => {
+      this.isCelebrating = false;
+      this.sprite.setScale(1, 1);
+      this.sprite.setTexture(`${this.baseTexture}_front_0`);
+    });
+  }
 
   update(delta) {
     if (this._kickCooldown  > 0) this._kickCooldown  -= delta;
     if (this._catchCooldown > 0) this._catchCooldown -= delta;
 
+    if (this.isCelebrating) return; // Bloquear update normal si celebra
     if (this.isFallen) return;
 
     // Clampear dentro del campo activo
     this.sprite.x = Phaser.Math.Clamp(this.sprite.x, FIELD.LEFT, FIELD.RIGHT);
     this.sprite.y = Phaser.Math.Clamp(this.sprite.y, FIELD.TOP, FIELD.BOTTOM);
+    // ... rest of update logic ...
 
     // Animación de caminata Nokia: leve oscilación y rebote
     const velocity = this.sprite.body.velocity;

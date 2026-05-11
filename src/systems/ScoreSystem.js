@@ -29,9 +29,10 @@ export default class ScoreSystem {
     this.scene.events.emit('updateScore', this.homeScore, this.awayScore);
     this.scene.audioManager?.play('goal');
 
-    // Pausar MatchScene y mostrar GoalScene
-    this.scene.scene.pause('MatchScene');
-    this.scene.scene.launch('GoalScene', { team });
+    // Avisar a MatchScene para que ejecute la animación de celebración in-game
+    if (this.scene.onGoalScored) {
+      this.scene.onGoalScored(team);
+    }
   }
 
   getScore() {
