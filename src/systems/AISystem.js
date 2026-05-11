@@ -68,8 +68,9 @@ export default class AISystem {
     if (this._frameCounter < this._updateEvery) return;
     this._frameCounter = 0;
 
-    this._updateTeamAI(this.awayTeam, this.homeTeam, false);
-    this._updateTeamAI(this.homeTeam, this.awayTeam, true);
+    const homeAttacksDown = true;
+    this._updateTeamAI(this.homeTeam, this.awayTeam, homeAttacksDown);
+    this._updateTeamAI(this.awayTeam, this.homeTeam, !homeAttacksDown);
   }
 
   // ─── IA de equipo ──────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ export default class AISystem {
   /**
    * @param {import('../entities/Team.js').default} team
    * @param {import('../entities/Team.js').default} opponent
+   * @param {boolean} attackingDown  true = HOME (ataca hacia abajo)
    * @param {boolean} attackingDown  true = HOME (ataca hacia abajo)
    */
   _updateTeamAI(team, opponent, attackingDown) {
@@ -160,28 +162,32 @@ export default class AISystem {
     const distToGoal  = Math.abs(targetGoalY - pos.y);
 
     if (role === 'forward') {
-      if (distToGoal < 85) {
-        Math.random() < 0.75
+      if (distToGoal < 95) {
+        Math.random() < 0.85
           ? this._shootAtGoal(player, attackingDown)
           : this._tryPassToTeammate(player, attackingDown);
       } else {
         // Avanzar con balón, ligero zigzag para parecer más natural
         const zigX = Math.sin(this.scene.time.now * 0.003 + index) * 0.3;
         player.move(zigX, attackingDown ? 1.2 : -1.2);
+        // Si hay presión fuerte, intentar pase
+        if (Math.random() < 0.02) this._tryPassToTeammate(player, attackingDown);
       }
     } else if (role === 'midfielder') {
-      if (distToGoal < 95) {
-        Math.random() < 0.55
+      if (distToGoal < 110) {
+        Math.random() < 0.6
           ? this._shootAtGoal(player, attackingDown)
           : this._tryPassToTeammate(player, attackingDown);
       } else {
         if (!this._tryPassToTeammate(player, attackingDown)) {
-          player.move(0, attackingDown ? 1 : -1);
+          player.move(0, attackingDown ? 1.1 : -1.1);
         }
       }
     } else {
-      // Defensa: siempre pasar
-      this._tryPassToTeammate(player, attackingDown);
+      // Defensa: intentar pase largo o despeje si hay presión
+      if (!this._tryPassToTeammate(player, attackingDown)) {
+          player.move(0, attackingDown ? 1 : -1);
+      }
     }
   }
 
@@ -392,26 +398,31 @@ export default class AISystem {
 
   /** Disparar al arco */
   _shootAtGoal(player, attackingDown) {
-    const pos        = player.getPosition();
+    const pos = player.getPosition();
     const targetGoalY = attackingDown ? FIELD.GOAL_BOT : FIELD.GOAL_TOP;
 
-    if (player._kickCooldown > 0) {
-      player.move(0, attackingDown ? 0.8 : -0.8);
-      return;
+    // IA usa el target dot correspondiente si está atacando esa portería
+    const isAttackingBot = attackingDown;
+    const targetDot = isAttackingBot ? this.scene.targetDotBot : this.scene.targetDotTop;
+
+    let dx, dy;
+    if (targetDot) {
+      dx = targetDot.x - pos.x;
+      dy = targetDot.y - pos.y;
+    } else {
+      const spread  = FIELD.GOAL_W / 2 - 3;
+      const timeFac = this.scene.time.now * 0.002;
+      const targetX = FIELD.X + Math.sin(timeFac + player.playerNumber) * spread;
+      dx = targetX - pos.x;
+      dy = targetGoalY - pos.y;
     }
 
-    const spread  = FIELD.GOAL_W / 2 - 3;
-    const timeFac = this.scene.time.now * 0.002;
-    const targetX = FIELD.X + Math.sin(timeFac + player.playerNumber) * spread;
-
-    let dx = targetX - pos.x;
-    let dy = targetGoalY - pos.y;
     const len = Math.hypot(dx, dy);
     if (len > 0) { dx /= len; dy /= len; }
 
     const isForward = attackingDown ? dy > 0 : dy < 0;
     if (isForward) {
-      player.kick(this.ball, dx, dy, 1.45);
+      player.kick(this.ball, dx, dy, 1.8); // Más potencia para IA
       this.scene.releaseBallPossession?.();
     } else {
       player.move(0, attackingDown ? 1 : -1);
@@ -436,12 +447,22 @@ export default class AISystem {
       const mPos   = mate.getPosition();
       const dToP   = Math.hypot(mPos.x - pos.x, mPos.y - pos.y);
 
-      // Rango de pase: 10–58px
-      if (dToP > 58 || dToP < 10) continue;
+      // Rango de pase: 10–75px
+      if (dToP > 75 || dToP < 10) continue;
+
+      // Penalización si hay rivales cerca del compañero (evitar pasar al rival)
+      let opponentNear = false;
+      const opponentTeam = player.team === 'home' ? this.awayTeam : this.homeTeam;
+      const opponents = opponentTeam.getAllPlayers();
+      for (const opp of opponents) {
+        const dToOpp = Math.hypot(mPos.x - opp.sprite.x, mPos.y - opp.sprite.y);
+        if (dToOpp < 18) { opponentNear = true; break; }
+      }
+      if (opponentNear) continue;
 
       const dToGoal  = Math.abs(goalY - mPos.y);
-      const forward  = (attackingDown ? mPos.y > pos.y : mPos.y < pos.y) ? 100 : 0;
-      const score    = forward - dToGoal * 0.8 - dToP * 0.5;
+      const forward  = (attackingDown ? mPos.y > pos.y : mPos.y < pos.y) ? 120 : 0;
+      const score    = forward - dToGoal * 0.8 - dToP * 0.3;
 
       if (score > bestScore) { bestScore = score; best = mate; }
     }
@@ -452,7 +473,7 @@ export default class AISystem {
       let dy = mPos.y - pos.y;
       const len = Math.hypot(dx, dy);
       if (len > 0) { dx /= len; dy /= len; }
-      player.kick(this.ball, dx, dy, 0.9);
+      player.kick(this.ball, dx, dy, 1.1); // Pase más firme
       this.scene.releaseBallPossession?.();
       return true;
     }

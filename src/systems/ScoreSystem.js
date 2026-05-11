@@ -26,7 +26,7 @@ export default class ScoreSystem {
       this.awayScore++;
     }
 
-    this.hud?.updateScore(this.homeScore, this.awayScore);
+    this.scene.events.emit('updateScore', this.homeScore, this.awayScore);
     this.scene.audioManager?.play('goal');
 
     // Pausar MatchScene y mostrar GoalScene

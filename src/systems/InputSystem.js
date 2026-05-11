@@ -52,11 +52,11 @@ export default class InputSystem {
     this._keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this._keyX     = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     this._keyP     = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
-    this._keyQ     = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this._keyZ     = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
 
     // Eventos
     this._keyP.on('down', () => { this._onPause(); });
-    this._keyQ.on('down', () => { this._onPlayerSwitch(); });
+    this._keyZ.on('down', () => { this._onPlayerSwitch(); });
     
     // SPACE y X los procesaremos en el update para mayor responsividad o mantener eventos
     this._keySpace.on('down', () => { this._onShoot(); });
@@ -115,16 +115,27 @@ export default class InputSystem {
       return;
     }
 
-    // Disparo va directo al punto rojo (Target Dot)
+    // Disparo va directo al punto rojo oscilante en la portería contraria
     const pos = player.getPosition();
-    const dotX = this.scene.targetDot ? this.scene.targetDot.x : pos.x;
-    const dotY = this.scene.targetDot ? this.scene.targetDot.y : pos.y + 10;
+    const isAttackingDown = !this.scene.isSecondHalf;
+    const target = isAttackingDown ? this.scene.targetDotBot : this.scene.targetDotTop;
     
-    const dx = dotX - pos.x;
-    const dy = dotY - pos.y;
+    let dx = 0;
+    let dy = isAttackingDown ? 1 : -1;
+
+    if (target) {
+      dx = target.x - pos.x;
+      dy = target.y - pos.y;
+      
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        dx /= dist;
+        dy /= dist;
+      }
+    }
     
-    // Si patea con éxito (Aumento potencia de tiro con powerRatio = 1.6)
-    const kicked = player.kick(this.ball, dx, dy, 1.6);
+    // Si patea con éxito (Aumento potencia de tiro con powerRatio = 2.2 para que sea más letal)
+    const kicked = player.kick(this.ball, dx, dy, 2.2);
     if (kicked) {
       this.scene.releaseBallPossession?.();
       this._kickCooldown = KICK_COOLDOWN_MS;
@@ -193,6 +204,9 @@ export default class InputSystem {
     }
     if (action === 'shoot') {
       return Phaser.Input.Keyboard.JustDown(this._keySpace);
+    }
+    if (action === 'switch') {
+      return Phaser.Input.Keyboard.JustDown(this._keyZ);
     }
     return false;
   }

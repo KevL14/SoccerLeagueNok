@@ -90,7 +90,11 @@ export default class Team {
     this.players.forEach((player, i) => {
       const pos = positions[i];
       if (!pos) return;
-      player.sprite.setPosition(pos.x, pos.y);
+      
+      let finalX = pos.x;
+      let finalY = pos.y;
+
+      player.sprite.setPosition(finalX, finalY);
       player.sprite.body.setVelocity(0, 0);
       player.setBallPossession(false);
       player.isFallen   = false;

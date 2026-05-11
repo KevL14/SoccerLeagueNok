@@ -25,14 +25,14 @@ export default class UIScene extends Phaser.Scene {
     const bar = this.add.rectangle(40, 6, 80, 12, 0x1a2a08, 0.85);
     bar.setOrigin(0.5, 0.5).setDepth(30);
 
-    // ─── Posesión (izquierda)
-    this.possessionIndicator = this.drawPixelText(4, 6, '>', 0x4dff4d);
-
-    // ─── Marcador (centro)
-    this.scoreContainer = this.drawPixelText(40, 6, '0-0', 0xffffff, true);
+    // ─── Marcador (izquierda)
+    this.scoreContainer = this.drawPixelText(4, 6, '0-0', 0xffffff, false);
 
     // ─── Timer (derecha)
-    this.timerContainer = this.drawPixelText(76, 6, '00:00', 0x4dff4d, false, true);
+    this.timerContainer = this.drawPixelText(76, 6, '0 MIN', 0x4dff4d, false, true);
+
+    // ─── Posesión (centro)
+    this.possessionIndicator = this.drawPixelText(40, 6, '>', 0x4dff4d, true);
 
     // ─── Anuncios ─────────────────────────────────────────────────────────────
     this.announcementBg = this.add.rectangle(40, 65, 76, 10, 0x000000, 0.85);
@@ -82,14 +82,12 @@ export default class UIScene extends Phaser.Scene {
     if (newText === this.lastScoreText) return;
     this.lastScoreText = newText;
     if (this.scoreContainer) this.scoreContainer.destroy();
-    this.scoreContainer = this.drawPixelText(40, 6, newText, 0xffffff, true);
+    this.scoreContainer = this.drawPixelText(4, 6, newText, 0xffffff, false);
   }
 
   updateTimer(timeMs) {
-    const totalSeconds = Math.floor(timeMs / 1000);
-    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-    const s = (totalSeconds % 60).toString().padStart(2, '0');
-    const newText = `${m}:${s}`;
+    const minutes = Math.floor(timeMs / 1000);
+    const newText = `${minutes} MIN`;
     if (newText === this.lastTimeText) return;
     this.lastTimeText = newText;
     if (this.timerContainer) this.timerContainer.destroy();
@@ -99,7 +97,7 @@ export default class UIScene extends Phaser.Scene {
   updatePossession(team) {
     if (!this.possessionIndicator) return;
     this.possessionIndicator.destroy();
-    this.possessionIndicator = this.drawPixelText(team === 'home' ? 4 : 72, 6, team === 'home' ? '>' : '<', 0x4dff4d);
+    this.possessionIndicator = this.drawPixelText(40, 6, team === 'home' ? '>' : '<', 0x4dff4d, true);
   }
 
   showAnnouncement(data) {

@@ -1,37 +1,45 @@
 /**
- * src/scenes/PauseScene.js
+ * src/scenes/FullTimeScene.js
  *
- * Escena de pausa del partido.
- * Estilo similar a FullTimeScene con opciones de Reanudar, Reiniciar o Salir.
+ * Pantalla de fin de partido con opciones de reiniciar o volver al menú.
  */
 
 import Phaser from 'phaser';
 
-export default class PauseScene extends Phaser.Scene {
+export default class FullTimeScene extends Phaser.Scene {
   constructor() {
-    super({ key: 'PauseScene' });
+    super({ key: 'FullTimeScene' });
+  }
+
+  init(data) {
+    this.finalScore = data ?? { home: 0, away: 0 };
   }
 
   create() {
     const cx = 40; // Centro horizontal (80/2)
     const cy = 40; // Centro vertical (80/2)
 
-    // Fondo con doble borde pixelado
+    // Fondo con doble borde pixelado — Ajustado a 80x80
     this.add.rectangle(cx, cy, 76, 76, 0x00ff00);
     this.add.rectangle(cx, cy, 74, 74, 0x000000);
     this.add.rectangle(cx, cy, 70, 70, 0x000000).setStrokeStyle(1, 0x005500);
 
     // Título (Pixel Art)
-    this.drawPixelText(cx, cy - 28, 'PAUSA', 0x00ff00, true);
+    this.drawPixelText(cx, cy - 28, 'FIN PARTIDO', 0x00ff00, true);
 
     // Línea divisoria
     this.add.rectangle(cx, cy - 20, 60, 1, 0x005500);
 
+    // Etiquetas de equipos
+    this.drawPixelText(cx, cy - 14, 'LOCAL VISIT', 0x00aa00, true);
+
+    // Marcador final (Pixel Art)
+    this.drawPixelText(cx, cy - 4, `${this.finalScore.home}-${this.finalScore.away}`, 0xffffff, true);
+
     // Opciones
     this.options = [
-      { text: 'REANUDAR', action: 'resume' },
-      { text: 'REINICIAR', action: 'restart' },
-      { text: 'SALIR AL MENU', action: 'menu' }
+      { text: 'REINTENTAR', action: 'restart' },
+      { text: 'MENU', action: 'menu' }
     ];
     this.selectedIndex = 0;
     this.optionContainers = [];
@@ -44,10 +52,6 @@ export default class PauseScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ENTER', () => this.confirmSelection());
     this.input.keyboard.on('keydown-SPACE', () => this.confirmSelection());
     this.input.keyboard.on('keydown-X', () => this.confirmSelection());
-    
-    // Permitir salir de pausa con ESC o P también (opcional pero amigable)
-    this.input.keyboard.on('keydown-ESC', () => this.confirmSelection());
-    this.input.keyboard.on('keydown-P', () => this.confirmSelection());
   }
 
   drawPixelText(x, y, text, color, centered = false) {
@@ -89,8 +93,13 @@ export default class PauseScene extends Phaser.Scene {
       const label = isSelected ? ` ${opt.text} ` : opt.text;
       const color = isSelected ? 0xffffff : 0x00aa00;
       
-      // Espaciado vertical para las 3 opciones
-      const container = this.drawPixelText(cx, cy - 4 + i * 12, label, color, true);
+      const container = this.drawPixelText(cx, cy + 12 + i * 12, label, color, true);
+      
+      // Añadir corchetes decorativos si está seleccionado
+      if (isSelected) {
+        // Los corchetes ya van en el texto si quisiéramos, pero vamos a usar guiones o simplemente color
+      }
+      
       this.optionContainers.push(container);
     });
   }
@@ -98,24 +107,14 @@ export default class PauseScene extends Phaser.Scene {
   confirmSelection() {
     const action = this.options[this.selectedIndex].action;
     
-    if (action === 'resume') {
-      this.scene.stop('PauseScene');
-      this.scene.resume('MatchScene');
-    } else if (action === 'restart') {
-      this.scene.stop('PauseScene');
+    if (action === 'restart') {
       this.scene.stop('MatchScene');
       this.scene.stop('UIScene');
       this.scene.start('MatchScene');
-    } else if (action === 'menu') {
-      this.scene.stop('PauseScene');
+    } else {
       this.scene.stop('MatchScene');
       this.scene.stop('UIScene');
       this.scene.start('MenuScene');
     }
-  }
-
-  shutdown() {
-    // No necesitamos killAll tweens aquí ya que no usamos tweens en esta versión,
-    // pero es buena práctica si añadiéramos alguno.
   }
 }
