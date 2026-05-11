@@ -75,6 +75,7 @@ export default class MatchScene extends Phaser.Scene {
 
     // Cámara sigue la bola — Nokia-style scrolling
     this.cameras.main.setBounds(0, 0, FIELD.WORLD_W, FIELD.WORLD_H);
+    this.physics.world.setBounds(0, 0, FIELD.WORLD_W, FIELD.WORLD_H);
     this.cameras.main.startFollow(
       this.ball.getSprite(),
       true,   // round pixels
@@ -122,7 +123,7 @@ export default class MatchScene extends Phaser.Scene {
 
     // ── Líneas del campo ──────────────────────────────────────────────────────
     const g = this.add.graphics().setDepth(1);
-    g.lineStyle(1, 0xc8e88a, 0.85);
+    g.lineStyle(1, 0xffffff, 1);
 
     g.strokeRect(LEFT, TOP, WIDTH, HEIGHT);
     g.lineBetween(LEFT, CY, RIGHT, CY);
@@ -172,21 +173,22 @@ export default class MatchScene extends Phaser.Scene {
   // ─── Equipos ────────────────────────────────────────────────────────────────
 
   _createTeams() {
-    const homeGKY = FIELD.GOAL_TOP + 3;
-    const awayGKY = FIELD.GOAL_BOT - 3;
+    const homeGKY = FIELD.TOP + 2;
+    const awayGKY = FIELD.BOTTOM - 2;
 
     const homeGK = new GoalKeeper(this, FIELD.X, homeGKY, homeGKY, 'home', 'gk_home');
     this.homeTeam = new Team(this, 'HOME', 'home', homeGK);
     for (let i = 0; i < 10; i++) {
-      // Spawn fuera del lado derecho del mundo
-      const p = new Player(this, FIELD.WORLD_W + 8 + i * 7, FIELD.CY - 15, 'home', i + 1, 'team_home');
+      // Spawn un poco más cerca del borde para asegurar visibilidad en la entrada
+      const p = new Player(this, FIELD.WORLD_W + 2 + i * 4, FIELD.CY - 15, 'home', i + 1, 'team_home');
       this.homeTeam.addPlayer(p);
     }
 
     const awayGK = new GoalKeeper(this, FIELD.X, awayGKY, awayGKY, 'away', 'gk_away');
     this.awayTeam = new Team(this, 'AWAY', 'away', awayGK);
     for (let i = 0; i < 10; i++) {
-      const p = new Player(this, FIELD.WORLD_W + 8 + i * 7, FIELD.CY + 15, 'away', i + 1, 'team_away');
+      // Spawn al lado izquierdo
+      const p = new Player(this, -2 - i * 4, FIELD.CY + 15, 'away', i + 1, 'team_away');
       this.awayTeam.addPlayer(p);
     }
   }
@@ -206,7 +208,7 @@ export default class MatchScene extends Phaser.Scene {
 
         if (isGK) {
           destX = FIELD.X;
-          destY = isHome ? FIELD.GOAL_TOP + 3 : FIELD.GOAL_BOT - 3;
+          destY = isHome ? FIELD.TOP + 2 : FIELD.BOTTOM - 2;
         } else {
           const pos = isHome
             ? this.homeTeam.getFormationPos(i - 1)
@@ -263,7 +265,7 @@ export default class MatchScene extends Phaser.Scene {
     kicker.setBallPossession(true);
 
     this.time.delayedCall(250, () => {
-      const dy = kicker.team === 'home' ? -0.5 : 0.5;
+      const dy = kicker.team === 'home' ? 0.5 : -0.5; // Home ataca abajo (+dy)
       kicker.kick(this.ball, (Math.random() - 0.5) * 0.4, dy, 0.45);
       this.isKickoff = false;
     });

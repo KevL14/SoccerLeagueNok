@@ -63,85 +63,81 @@ export default class BootScene extends Phaser.Scene {
    * @param {number} legColor    color medias/piel de piernas
    */
   _makePlayerSprite(key, shirtColor, shortsColor, legColor) {
-    const W = 6, H = 10;
-    const rt = this.add.renderTexture(0, 0, W, H);
-    rt.setVisible(false);
-
+    const W = 6, H = 9; // Un poco más ancho para brazos
     const g = this.make.graphics({ add: false });
 
-    // Cabeza — piel
-    g.fillStyle(SKIN, 1);
-    g.fillRect(2, 0, 2, 2);
+    // Cabello
+    g.fillStyle(0x332211, 1);
+    g.fillRect(2, 0, 2, 1);
 
-    // Camiseta
+    // Cabeza
+    g.fillStyle(SKIN, 1);
+    g.fillRect(2, 1, 2, 2);
+
+    // Tronco / Camiseta
     g.fillStyle(shirtColor, 1);
-    g.fillRect(1, 2, 4, 1);
-    g.fillRect(0, 3, 6, 2);
+    g.fillRect(2, 3, 2, 3);
+    
+    // Brazos (rectángulos laterales finos)
+    g.fillRect(1, 3, 1, 2);
+    g.fillRect(4, 3, 1, 2);
 
     // Shorts
     g.fillStyle(shortsColor, 1);
-    g.fillRect(1, 5, 4, 2);
+    g.fillRect(2, 6, 2, 1);
 
-    // Medias/piernas
+    // Piernas
     g.fillStyle(legColor, 1);
-    g.fillRect(1, 7, 1, 2);
-    g.fillRect(4, 7, 1, 2);
+    g.fillRect(2, 7, 1, 1);
+    g.fillRect(3, 7, 1, 1);
 
-    // Botas
+    // Pies
     g.fillStyle(BOOT, 1);
-    g.fillRect(1, 9, 1, 1);
-    g.fillRect(4, 9, 1, 1);
+    g.fillRect(1, 8, 2, 1);
+    g.fillRect(3, 8, 2, 1);
 
-    rt.draw(g, 0, 0);
-    rt.saveTexture(key);
-
+    g.generateTexture(key, W, H);
     g.destroy();
-    rt.destroy();
   }
 
   /**
    * Portero: igual al jugador pero con guantes blancos visibles.
    */
   _makeGKSprite(key, shirtColor, shortsColor) {
-    const W = 6, H = 10;
-    const rt = this.add.renderTexture(0, 0, W, H);
-    rt.setVisible(false);
-
+    const W = 6, H = 9;
     const g = this.make.graphics({ add: false });
+
+    // Pelo
+    g.fillStyle(0x221100, 1);
+    g.fillRect(2, 0, 2, 1);
 
     // Cabeza
     g.fillStyle(SKIN, 1);
-    g.fillRect(2, 0, 2, 2);
+    g.fillRect(2, 1, 2, 2);
 
-    // Camiseta
+    // Cuerpo (incluye guantes/brazos integrados)
     g.fillStyle(shirtColor, 1);
-    g.fillRect(1, 2, 4, 1);
-    g.fillRect(0, 3, 6, 2);
-
-    // Guantes blancos en extremos de los brazos
+    g.fillRect(1, 3, 4, 3); 
+    
+    // Guantes blancos
     g.fillStyle(0xffffff, 1);
-    g.fillRect(0, 4, 1, 1);
-    g.fillRect(5, 4, 1, 1);
+    g.fillRect(1, 3, 1, 2);
+    g.fillRect(4, 3, 1, 2);
 
     // Shorts
     g.fillStyle(shortsColor, 1);
-    g.fillRect(1, 5, 4, 2);
+    g.fillRect(2, 6, 2, 1);
 
     // Piernas
     g.fillStyle(SKIN, 1);
-    g.fillRect(1, 7, 1, 2);
-    g.fillRect(4, 7, 1, 2);
+    g.fillRect(2, 7, 2, 1);
 
     // Botas
     g.fillStyle(BOOT, 1);
-    g.fillRect(1, 9, 1, 1);
-    g.fillRect(4, 9, 1, 1);
+    g.fillRect(1, 8, 4, 1);
 
-    rt.draw(g, 0, 0);
-    rt.saveTexture(key);
-
+    g.generateTexture(key, W, H);
     g.destroy();
-    rt.destroy();
   }
 
   _generateTextures() {
@@ -158,18 +154,22 @@ export default class BootScene extends Phaser.Scene {
     this._makeGKSprite('gk_away', 0xff8800, 0x222222);
 
     // ─── PELOTA: cuadrado blanco 2×2 con sombra ──────────────────────────────
-    const rt = this.add.renderTexture(0, 0, 3, 3);
-    rt.setVisible(false);
-    const bg = this.make.graphics({ add: false });
-    bg.fillStyle(0xffffff, 1);
-    bg.fillRect(0, 0, 3, 3);
-    bg.fillStyle(0xaaaaaa, 1);
-    bg.fillRect(2, 2, 1, 1); // sombra esquina
-    bg.fillStyle(0x555555, 1);
-    bg.fillRect(1, 1, 1, 1); // centro oscuro (efecto cuero)
-    rt.draw(bg, 0, 0);
-    rt.saveTexture('ball_tex');
-    bg.destroy();
-    rt.destroy();
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    // Diseño de pelota más pulido (círculo 4x4 aproximado)
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(1, 0, 2, 4); // central vert
+    g.fillRect(0, 1, 4, 2); // central horiz
+    
+    // Detalle gajos (puntos oscuros)
+    g.fillStyle(0x000000, 1);
+    g.fillRect(1, 1, 1, 1);
+    g.fillRect(2, 2, 1, 1);
+    
+    // Brillo superior
+    g.fillStyle(0xffffff, 0.5);
+    g.fillRect(1, 0, 1, 1);
+
+    g.generateTexture('ball_tex', 4, 4);
+    g.destroy();
   }
 }

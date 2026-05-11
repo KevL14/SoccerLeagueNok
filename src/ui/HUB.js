@@ -1,8 +1,8 @@
 /**
  * src/ui/HUB.js
  *
- * HUD Nokia Soccer League — fijo a la cámara (scrollFactor = 0).
- * Ocupa la franja superior (y=0–8) del VIEWPORT (no del mundo).
+ * Interfaz de usuario para el Nokia Soccer League.
+ * Rediseñado para mayor legibilidad (LCD retro pero nítido).
  */
 
 import Phaser from 'phaser';
@@ -10,99 +10,97 @@ import Phaser from 'phaser';
 export default class HUD {
   constructor(scene) {
     this.scene = scene;
-
-    this.scoreText           = null;
-    this.timerText           = null;
+    this.scoreText = null;
+    this.timerText = null;
     this.possessionIndicator = null;
-    this.announcement        = null;
-
-    this.homeScore    = 0;
-    this.awayScore    = 0;
-    this._elapsedSecs = 0;
+    this.announcementText = null;
+    this.announcementBg = null;
   }
 
   create() {
-    // Fondo del HUD — fijo a cámara
-    const bg = this.scene.add.rectangle(30, 4, 60, 8, 0x000000)
-      .setScrollFactor(0).setDepth(30);
+    // Fondo de la barra superior (LCD retro oscuro)
+    const bar = this.scene.add.rectangle(40, 6, 80, 12, 0x1a2a08, 0.85);
+    bar.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(30);
 
-    // Separador
-    this.scene.add.graphics()
-      .setScrollFactor(0).setDepth(31)
-      .lineStyle(1, 0x44ff44, 0.7)
-      .lineBetween(0, 8, 60, 8);
+    const textStyle = {
+      fontFamily: 'Verdana, Arial, sans-serif',
+      fontSize:   '7px',
+      color:      '#4dff4d',
+      fontStyle:  'bold',
+      stroke:     '#000000',
+      strokeThickness: 1
+    };
 
-    // Posesión (izquierda) — fijo
-    this.possessionIndicator = this.scene.add.text(3, 4, '▶', {
-      fontFamily: 'monospace', fontSize: '6px', color: '#44ff44',
-    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(32);
+    // Posesión (izquierda)
+    this.possessionIndicator = this.scene.add.text(4, 6, '▶', textStyle)
+      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(32);
 
-    // Marcador (centro) — fijo
-    this.scoreText = this.scene.add.text(30, 4, '0 - 0', {
-      fontFamily: 'monospace', fontSize: '7px', color: '#ffffff',
+    // Marcador (centro)
+    this.scoreText = this.scene.add.text(40, 6, '0 - 0', {
+      ...textStyle,
+      fontSize: '8px',
+      color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(32);
 
-    // Timer (derecha) — fijo
-    this.timerText = this.scene.add.text(57, 4, '00:00', {
-      fontFamily: 'monospace', fontSize: '6px', color: '#44ff44',
-    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(32);
+    // Timer (derecha)
+    this.timerText = this.scene.add.text(76, 6, '00:00', textStyle)
+      .setOrigin(1, 0.5).setScrollFactor(0).setDepth(32);
+
+    // ─── Anuncios (Press X, GOAL, etc) ─────────────────────────────────────────
+    this.announcementBg = this.scene.add.rectangle(40, 55, 60, 15, 0x000000, 0.7);
+    this.announcementBg.setOrigin(0.5).setScrollFactor(0).setDepth(40).setVisible(false);
+
+    this.announcementText = this.scene.add.text(40, 55, '', {
+      fontFamily: 'Verdana, Arial, sans-serif',
+      fontSize:   '6px',
+      color:      '#ffff00',
+      fontStyle:  'bold',
+      align:      'center',
+      stroke:     '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(false);
   }
 
   updateScore(home, away) {
-    this.homeScore = home;
-    this.awayScore = away;
-    this.scoreText.setText(`${home} - ${away}`);
-    this.scene.tweens.add({
-      targets: this.scoreText,
-      scaleX: 1.5, scaleY: 1.5,
-      duration: 90, yoyo: true,
-    });
+    if (this.scoreText) this.scoreText.setText(`${home} - ${away}`);
   }
 
-  updateTimer(ms) {
-    const total   = Math.floor(ms / 1000);
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-    this.timerText.setText(
-      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    );
-    this._elapsedSecs = total;
+  updateTimer(timeMs) {
+    if (!this.timerText) return;
+    const totalSeconds = Math.floor(timeMs / 1000);
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    this.timerText.setText(`${m}:${s}`);
   }
 
   updatePossession(team) {
     if (!this.possessionIndicator) return;
-    if (team === 'home') this.possessionIndicator.setText('▶').setColor('#44ff44');
-    else if (team === 'away') this.possessionIndicator.setText('◀').setColor('#ffff44');
-    else this.possessionIndicator.setText('·').setColor('#448844');
+    this.possessionIndicator.setX(team === 'home' ? 4 : 70);
+    this.possessionIndicator.setText(team === 'home' ? '▶' : '◀');
   }
 
-  showAnnouncement(text) {
-    if (this.announcement) this.announcement.destroy();
-    this.announcement = this.scene.add.text(30, 44, text, {
-      fontFamily: 'monospace', fontSize: '6px', color: '#ffff44',
-      backgroundColor: '#000000cc',
-      padding: { x: 3, y: 2 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
+  showAnnouncement(text, duration = 0) {
+    if (!this.announcementText) return;
+    this.announcementText.setText(text).setVisible(true);
+    this.announcementBg.setVisible(true);
+
+    if (duration > 0) {
+      this.scene.time.delayedCall(duration, () => this.hideAnnouncement());
+    }
   }
 
   hideAnnouncement() {
-    if (this.announcement) { this.announcement.destroy(); this.announcement = null; }
+    if (this.announcementText) {
+      this.announcementText.setVisible(false);
+      this.announcementBg.setVisible(false);
+    }
   }
-
-  showMessage(text, duration = 1000) {
-    const msg = this.scene.add.text(30, 44, text, {
-      fontFamily: 'monospace', fontSize: '6px', color: '#ffff00',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
-    this.scene.time.delayedCall(duration, () => msg.destroy());
-  }
-
-  getScore()          { return { home: this.homeScore, away: this.awayScore }; }
-  getElapsedSeconds() { return this._elapsedSecs; }
 
   destroy() {
     this.scoreText?.destroy();
     this.timerText?.destroy();
     this.possessionIndicator?.destroy();
-    this.announcement?.destroy();
+    this.announcementText?.destroy();
+    this.announcementBg?.destroy();
   }
 }

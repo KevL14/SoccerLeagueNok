@@ -10,8 +10,8 @@ import Phaser from 'phaser';
 import { FIELD } from '../config/fieldConstants.js';
 
 const STOP_THRESHOLD = 3;
-const MAX_SPEED      = 140;   // reducido (era 200)
-const KICK_SCALE     = 110;   // reducido (era 140)
+const MAX_SPEED      = 140;   
+const KICK_SCALE     = 110;   
 const DRAG           = 40;
 const WALL_BOUNCE    = 0.6;
 
@@ -30,8 +30,9 @@ export default class Ball {
     this.sprite.body.setBounce(0);
     this.sprite.body.setDrag(DRAG);
     this.sprite.body.setMaxSpeed(MAX_SPEED);
-    // Cuerpo físico cuadrado de 3×3
-    this.sprite.body.setSize(3, 3);
+    
+    // Cuerpo físico cuadrado de 4×4
+    this.sprite.body.setSize(4, 4);
     this.sprite.body.setOffset(0, 0);
 
     this.isMoving = false;
@@ -60,8 +61,15 @@ export default class Ball {
     let   vy = this.sprite.body.velocity.y;
     const speed = Math.hypot(vx, vy);
 
-    if (speed < STOP_THRESHOLD) { this.stop(); return; }
+    if (speed < STOP_THRESHOLD) { 
+      this.stop(); 
+      this.sprite.angle = 0;
+      return; 
+    }
     this.isMoving = true;
+
+    // Animación de rotación basada en velocidad
+    this.sprite.angle += speed * 0.15;
 
     // Paredes laterales — siempre rebotan
     if (bx <= FIELD.LEFT + 1 && vx < 0) {

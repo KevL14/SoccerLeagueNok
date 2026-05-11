@@ -135,8 +135,7 @@ export default class Player {
     if (this.isFallen) return;
 
     // Clampear dentro del campo activo
-    this.sprite.x = Phaser.Math.Clamp(this.sprite.x, FIELD.LEFT + 2,  FIELD.RIGHT - 2);
-    this.sprite.y = Phaser.Math.Clamp(this.sprite.y, FIELD.TOP  + 1,  FIELD.BOTTOM - 1);
+
 
     // Animación de caminata Nokia: leve oscilación
     const speed = Math.hypot(this.sprite.body.velocity.x, this.sprite.body.velocity.y);

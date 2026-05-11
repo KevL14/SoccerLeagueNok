@@ -12,11 +12,13 @@ import Phaser from 'phaser';
 
 export const gameConfig = {
   type:     Phaser.AUTO,
-  width:    60,   // viewport ancho
-  height:   85,   // viewport alto (campo total: 200px, la cámara scrollea)
-  zoom:     7,    // 60×7=420 · 85×7=595 px en pantalla
-  pixelArt: true,
-  parent:   'app',
+  width:    80,
+  height:   110,
+  zoom:     5,
+  pixelArt:    true,
+  roundPixels: true,
+  antialias:   false,
+  parent:      'app',
 
   backgroundColor: '#3d5c1a',
 
