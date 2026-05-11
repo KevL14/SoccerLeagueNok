@@ -1,173 +1,155 @@
 /**
  * src/entities/GoalKeeper.js
- * 
- * Entidad que representa al arquero.
- * Maneja:
- * - IA básica de seguimiento de pelota
- * - Posicionamiento defensivo retro
- * - Paradas y reflejos simples (arcade)
- * - Movimiento limitado a área de penal
- * - Interacción con la pelota
+ *
+ * Arquero: se mueve horizontalmente a lo largo de su línea de gol.
+ * HOME: defiende portería superior (y≈13), se mueve en X.
+ * AWAY: defiende portería inferior (y≈155), se mueve en X.
  */
 
 import Phaser from 'phaser';
+import { FIELD } from '../config/fieldConstants.js';
+
+const REACTION_MS = 180; // Slower reaction time to make scoring easier
 
 export default class GoalKeeper {
   /**
-   * Constructor del arquero.
-   * @param {Phaser.Scene} scene - La escena actual
-   * @param {number} x - Posición inicial X (normalmente cerca de la portería)
-   * @param {number} y - Posición inicial Y (centro vertical)
-   * @param {string} team - Equipo: 'home' o 'away'
+   * @param {Phaser.Scene} scene
+   * @param {number} x      Spawn X
+   * @param {number} y      Spawn Y
+   * @param {number} goalY  Y fija de la portería (donde defiende)
+   * @param {'home'|'away'} team
+   * @param {string} [texture]
    */
-  constructor(scene, x, y, team) {
-    this.scene = scene;
-    this.team = team;
-    
-    // Crear sprite del arquero (rectángulo más grande que un jugador normal)
-    // Color: mismo del equipo (verde/amarillo)
-    const color = team === 'home' ? 0x00ff00 : 0xffff00;
-    this.sprite = scene.add.rectangle(x, y, 6, 8, color);
-    
-    // Habilitar física arcade
+  constructor(scene, x, y, goalY, team, texture) {
+    this.scene  = scene;
+    this.team   = team;
+    this.fixedY = goalY; // El arquero defenderá esta Y
+
+    const tex = texture || (team === 'home' ? 'gk_home' : 'gk_away');
+    this.sprite = scene.add.sprite(x, y, tex);
     scene.physics.world.enable(this.sprite);
-    
-    // Configurar propiedades físicas
+
+    this.sprite.body.setSize(8, 12);
+    this.sprite.body.setOffset(0, 0);
+
     this.sprite.body.setCollideWorldBounds(true);
-    this.sprite.body.setBounce(0.5);
-    this.sprite.body.setDrag(0.99); // Más fricción que jugadores normales
-    
-    // Variables de control
-    this.isMoving = false;
-    this.speed = 60; // Velocidad del arquero (más lenta que jugadores)
-    
-    // Límites del área de penal (donde se puede mover)
-    this.minX = team === 'home' ? 5 : 155 - 5;
-    this.maxX = team === 'home' ? 20 : 155;
-    this.minY = 30;
-    this.maxY = 90;
-    
-    // IA: variables de seguimiento
-    this.targetX = x;
-    this.targetY = y;
-    this.aiReactionTime = 0; // Cooldown de reacción para IA retro
-    this.ballLastPosition = { x: 80, y: 60 }; // Referencia de última posición de pelota
+    this.sprite.body.setBounce(0.1);
+    this.sprite.body.setDrag(200);
+
+    this.speed = 58; // Slower movement
+
+    const halfW = FIELD.GOAL_W / 2;
+    this.minX = FIELD.X - halfW + 3; 
+    this.maxX = FIELD.X + halfW - 3;
+
+    this.isDiving = false;
+    this._aiTimer = 0;
+    this._targetX = x; // Para suavizado
   }
-  
+
+  // ─── IA ────────────────────────────────────────────────────────────────────
+
   /**
-   * IA del arquero: sigue la pelota automáticamente.
-   * @param {Ball} ball - La instancia de la pelota
-   * @param {number} delta - Tiempo en ms desde el último frame
+   * Mueve el arquero siguiendo la posición X de la pelota.
+   * @param {import('./Ball.js').default} ball
+   * @param {number} delta  ms
    */
   updateAI(ball, delta) {
-    // Reducir cooldown de reacción
-    if (this.aiReactionTime > 0) {
-      this.aiReactionTime -= delta;
-    }
+    this._aiTimer -= delta;
+    if (this._aiTimer > 0) return;
+    this._aiTimer = REACTION_MS;
+
+    const ballPos = ball.getPosition();
+    const ballVel = ball.getVelocity();
+
+    // Predecir posición futura de la pelota
+    let targetX = ballPos.x + ballVel.x * 0.15; // Menos predicción
     
-    // Solo reacciona después del cooldown
-    if (this.aiReactionTime <= 0) {
-      const ballPos = ball.getPosition();
-      const ballVel = ball.getVelocity();
-      
-      // Predecir posición de la pelota
-      let targetY = ballPos.y;
-      
-      // Si la pelota se mueve hacia el arquero, anticipa
-      if (this.team === 'home' && ballVel.x < 0) {
-        targetY = ballPos.y + (ballVel.y * 0.5); // Predicción simple
-      } else if (this.team === 'away' && ballVel.x > 0) {
-        targetY = ballPos.y + (ballVel.y * 0.5);
-      }
-      
-      // Limitar target Y dentro de los límites
-      targetY = Phaser.Math.Clamp(targetY, this.minY, this.maxY);
-      
-      // Mover hacia la posición objetivo
-      const dy = targetY - this.sprite.y;
-      
-      if (Math.abs(dy) > 3) {
-        const moveDir = dy > 0 ? 1 : -1;
-        this.sprite.body.setVelocityY(moveDir * this.speed);
-        this.isMoving = true;
-      } else {
-        this.sprite.body.setVelocityY(0);
-        this.isMoving = false;
-      }
-      
-      // Mantener X fijo (posición de portería)
+    const distY = Math.abs(this.fixedY - ballPos.y);
+
+    // Si la bola está lejos, el portero se queda más al centro
+    if (distY > 100) {
+      targetX = (targetX + FIELD.X) / 2;
+    }
+
+    this._targetX = Phaser.Math.Clamp(targetX, this.minX, this.maxX);
+
+    if (this.isDiving) return;
+
+    const dx = this._targetX - this.sprite.x;
+
+    // Dive logic: Solo si es muy necesario y con margen de error
+    const ballSpeed = Math.hypot(ballVel.x, ballVel.y);
+    if (ballSpeed > 140 && distY < 25 && Math.abs(dx) > 18) {
+        this.dive(Math.sign(dx));
+        return;
+    }
+
+    if (Math.abs(dx) > 2) {
+      // Movimiento más suave usando velocidad gradual
+      const targetVel = Math.sign(dx) * this.speed;
+      const currentVel = this.sprite.body.velocity.x;
+      this.sprite.body.setVelocityX(currentVel * 0.8 + targetVel * 0.2);
+    } else {
+      this.sprite.body.setVelocityX(this.sprite.body.velocity.x * 0.8);
+    }
+    this.sprite.body.setVelocityY(0);
+    this.sprite.y = this.fixedY;
+
+    // Forzar límites físicos
+    if (this.sprite.x < this.minX) {
+      this.sprite.x = this.minX;
       this.sprite.body.setVelocityX(0);
-      
-      // Establecer cooldown de reacción (IA retro con retraso)
-      this.aiReactionTime = 200; // 200ms entre reacciones
+    } else if (this.sprite.x > this.maxX) {
+      this.sprite.x = this.maxX;
+      this.sprite.body.setVelocityX(0);
     }
   }
-  
-  /**
-   * Obtiene la posición actual del arquero.
-   * @returns {Object} Objeto con propiedades x, y
-   */
-  getPosition() {
-    return {
-      x: this.sprite.x,
-      y: this.sprite.y
-    };
-  }
-  
-  /**
-   * Obtiene el sprite del arquero para colisiones.
-   * @returns {Phaser.Physics.Arcade.Sprite} El sprite del arquero
-   */
-  getSprite() {
-    return this.sprite;
-  }
-  
-  /**
-   * Realiza una parada (animación visual retro).
-   * Nota: Función para eventos visuales.
-   */
-  performSave() {
-    // Parpadeo visual (cambio de color temporal)
-    const originalColor = this.sprite.fillColor;
-    this.sprite.setFillStyle(0xffffff); // Blanco temporalmente
+
+  // ─── Acciones ──────────────────────────────────────────────────────────────
+
+  /** Lanzarse lateralmente para atajar un tiro difícil */
+  dive(direction) {
+    if (this.isDiving) return;
+    this.isDiving = true;
     
-    // Volver al color original después de 100ms
-    this.scene.time.delayedCall(100, () => {
-      const color = this.team === 'home' ? 0x00ff00 : 0xffff00;
-      this.sprite.setFillStyle(color);
+    const diveSpeed = 180; // Reducido de 220
+    this.sprite.body.setVelocityX(direction * diveSpeed);
+    
+    // Animación visual de lanzarse (inclinar y estirar)
+    this.sprite.setAngle(direction * 75); 
+    this.sprite.setScale(1.2, 0.8);
+    
+    this.scene.time.delayedCall(450, () => {
+      if (!this.sprite?.body) return;
+      this.isDiving = false;
+      this.sprite.setAngle(0);
+      this.sprite.setScale(1);
+      this.sprite.body.setVelocityX(0);
     });
   }
-  
-  /**
-   * Verifica si el arquero puede alcanzar la pelota.
-   * @param {Ball} ball - La instancia de la pelota
-   * @param {number} reachDistance - Distancia de alcance (píxeles)
-   * @returns {boolean} True si puede alcanzar
-   */
-  canReachBall(ball, reachDistance = 12) {
-    const ballPos = ball.getPosition();
-    const dx = this.sprite.x - ballPos.x;
-    const dy = this.sprite.y - ballPos.y;
-    return Math.sqrt(dx * dx + dy * dy) < reachDistance;
+
+  /** Flash blanco al realizar una parada. */
+  performSave() {
+    this.sprite.setTint(0xffffff);
+    this.isDiving = false; // Reset dive on save
+    this.sprite.setAngle(0);
+    this.sprite.setScale(1, 1); // Reset scale to prevent animation jump
+    this.scene.time.delayedCall(120, () => {
+      if (this.sprite?.active) this.sprite.clearTint();
+    });
   }
-  
-  /**
-   * Reinicia la posición del arquero al centro de la portería.
-   */
+
+  // ─── API ───────────────────────────────────────────────────────────────────
+
+  getPosition() { return { x: this.sprite.x, y: this.sprite.y }; }
+
+  getSprite() { return this.sprite; }
+
   resetPosition() {
-    const initialX = this.team === 'home' ? 10 : 150;
-    const initialY = 60;
-    this.sprite.setPosition(initialX, initialY);
+    this.sprite.setPosition(60, this.fixedY);
     this.sprite.body.setVelocity(0, 0);
-    this.isMoving = false;
   }
-  
-  /**
-   * Destruye el sprite del arquero.
-   */
-  destroy() {
-    if (this.sprite) {
-      this.sprite.destroy();
-    }
-  }
+
+  destroy() { this.sprite?.destroy(); }
 }

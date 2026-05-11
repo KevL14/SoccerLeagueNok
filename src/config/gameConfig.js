@@ -1,25 +1,27 @@
 /**
  * src/config/gameConfig.js
- * 
- * Configuración global del juego en Phaser.
- * Establece: resolución retro, escalado, físicas y escenas iniciales.
+ *
+ * Configuración base de Phaser para Nokia Soccer League.
+ * Resolución: 120×160 (vertical/portrait) · Escala: ×4 = 480×640 en pantalla
  */
 
 import Phaser from 'phaser';
 
 export const gameConfig = {
-  type: Phaser.AUTO, // Detecta automáticamente WebGL o Canvas
-  width: 160,        // Resolución retro pequeña
-  height: 120,
-  zoom: 4,           // Escala para pantallas modernas
-  pixelArt: true,    // Activa renderizado pixel-perfect
+  type:     Phaser.AUTO,
+  width:    120,
+  height:   160,
+  zoom:     4,
+  pixelArt: true,
+  parent:   'app',
+
   physics: {
     default: 'arcade',
-    arcade: {
-      gravity: { y: 0 }, // Sin gravedad, estilo arcade
-      debug: false       // Desactiva debug visual
-    }
+    arcade:  {
+      gravity: { y: 0 },
+      debug:   false,
+    },
   },
-  scene: [] // Se llenará con las escenas (BootScene, MenuScene, etc.)
-};
 
+  scene: [], // Las escenas se inyectan en main.js
+};

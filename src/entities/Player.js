@@ -1,171 +1,205 @@
 /**
  * src/entities/Player.js
- * 
- * Entidad que representa un jugador en el campo.
- * Maneja:
- * - Movimiento en el campo (limitado a bordes)
- * - Pateo de la pelota
- * - Animaciones básicas (retro)
- * - Detección de posesión de pelota
- * - Dirección y velocidad de movimiento
+ *
+ * Jugador de campo: movimiento, pateo y posesión.
  */
 
 import Phaser from 'phaser';
 
+const KICK_COOLDOWN_MS = 350; // ms entre pateos
+
 export default class Player {
   /**
-   * Constructor del jugador.
-   * @param {Phaser.Scene} scene - La escena actual
-   * @param {number} x - Posición inicial X
-   * @param {number} y - Posición inicial Y
-   * @param {string} team - Equipo: 'home' o 'away'
-   * @param {number} playerNumber - Número del jugador (1-11)
+   * @param {Phaser.Scene} scene
+   * @param {number} x
+   * @param {number} y
+   * @param {'home'|'away'} team
+   * @param {string} [texture]
    */
-  constructor(scene, x, y, team, playerNumber = 1) {
-    this.scene = scene;
-    this.team = team; // 'home' o 'away'
+  constructor(scene, x, y, team, playerNumber = 1, texture) {
+    this.scene        = scene;
+    this.team         = team;
     this.playerNumber = playerNumber;
-    
-    // Crear sprite del jugador (rectángulo retro para simplificar)
-    // Color: equipo home = verde, equipo away = amarillo
-    const color = team === 'home' ? 0x00ff00 : 0xffff00;
-    this.sprite = scene.add.rectangle(x, y, 4, 6, color);
-    
-    // Habilitar física arcade
+
+    const tex = texture || (team === 'home' ? 'player_home' : 'player_away');
+    this.sprite = scene.add.sprite(x, y, tex);
     scene.physics.world.enable(this.sprite);
-    
-    // Configurar propiedades físicas
+
+    // Ajustar caja de colisión para el nuevo sprite de 8x12 (enfocado en torso y pies)
+    this.sprite.body.setSize(6, 8);
+    this.sprite.body.setOffset(1, 4);
+
     this.sprite.body.setCollideWorldBounds(true);
-    this.sprite.body.setBounce(0.3);
-    this.sprite.body.setDrag(0.98); // Fricción para movimiento más realista
-    this.sprite.body.setMaxSpeed(100); // Velocidad máxima retro
-    
-    // Variables de control de movimiento
-    this.isMoving = false;
-    this.direction = { x: 0, y: 0 }; // Dirección de movimiento
-    this.speed = 80; // Velocidad de movimiento estándar
-    
-    // Variables de interacción con pelota
-    this.hasBall = false;
-    this.kickPower = 150; // Potencia de pateo
-    this.kickCooldown = 0; // Cooldown entre pateos (en ms)
+    this.sprite.body.setBounce(0.1);
+    this.sprite.body.setDrag(120);   // frenado natural al soltar tecla
+    this.sprite.body.setMaxSpeed(55);
+
+    this.speed         = 50; // (Antes 45)
+    this.hasBall       = false;
+    this._kickCooldown = 0;
+    this._catchCooldown = 0;
+    this.direction     = { x: 0, y: 0 };
+    this.isFallen      = false;
+    this.isTackling    = false;
+    this._walkTimer    = 0;
   }
-  
+
+  // ─── Acciones ──────────────────────────────────────────────────────────────
+
   /**
-   * Mueve el jugador en una dirección.
-   * @param {number} dirX - Dirección en eje X (-1, 0, 1)
-   * @param {number} dirY - Dirección en eje Y (-1, 0, 1)
+   * Realiza una barrida (tackle) física corta pero rápida.
+   * @param {number} dx
+   * @param {number} dy
+   */
+  tackle(dx, dy) {
+    if (this.isFallen || this.isTackling || this.hasBall) return;
+    
+    this.isTackling = true;
+    
+    // Dash corto (5px solicitado por usuario) pero rápido (100px/s)
+    const len = Math.hypot(dx, dy);
+    const vx = dx / len * 100;
+    const vy = dy / len * 100;
+    
+    this.sprite.body.setVelocity(vx, vy);
+    this.sprite.setAngle(45 * Math.sign(dx));
+    this.sprite.setTint(0xffaaaa);
+
+    this.scene.time.delayedCall(50, () => {
+      if (!this.sprite?.body) return;
+      this.isTackling = false;
+      this.sprite.clearTint();
+      this.sprite.setAngle(0);
+      this.stop();
+    });
+  }
+
+  // ─── Movimiento ────────────────────────────────────────────────────────────
+
+  /**
+   * @param {number} dirX  -1 · 0 · 1
+   * @param {number} dirY  -1 · 0 · 1
    */
   move(dirX, dirY) {
-    // Normalizar dirección diagonal
-    const length = Math.sqrt(dirX * dirX + dirY * dirY);
-    if (length > 0) {
-      dirX = dirX / length;
-      dirY = dirY / length;
-    }
-    
-    // Aplicar velocidad
+    if (this.isFallen) return;
+
+    const len = Math.hypot(dirX, dirY);
+    if (len > 0) { dirX /= len; dirY /= len; }
+
     this.sprite.body.setVelocity(dirX * this.speed, dirY * this.speed);
-    
-    // Guardar dirección para referencias futuras
     this.direction = { x: dirX, y: dirY };
-    this.isMoving = length > 0;
   }
-  
-  /**
-   * Detiene el movimiento del jugador.
-   */
+
   stop() {
     this.sprite.body.setVelocity(0, 0);
-    this.isMoving = false;
     this.direction = { x: 0, y: 0 };
   }
-  
+
+  // ─── Pelota ────────────────────────────────────────────────────────────────
+
   /**
-   * Patea la pelota si está en posesión.
-   * @param {Ball} ball - La instancia de la pelota
-   * @param {number} dirX - Dirección del pateo eje X
-   * @param {number} dirY - Dirección del pateo eje Y
+   * Patea la pelota. Retorna true si el pateo fue exitoso.
+   * @param {import('./Ball.js').default} ball
+   * @param {number} [dirX=0]
+   * @param {number} [dirY=1]
+   * @param {number} [powerRatio=1]
+   * @returns {boolean}
    */
-  kick(ball, dirX = 1, dirY = 0) {
-    // Verificar cooldown
-    if (this.kickCooldown > 0) {
-      return;
+  kick(ball, dirX = 0, dirY = 1, powerRatio = 1) {
+    if (this._kickCooldown > 0 || !this.hasBall) return false;
+    ball.kick(dirX, dirY, powerRatio);
+    this._kickCooldown = KICK_COOLDOWN_MS;
+    this._catchCooldown = 500; // No puede re-atraparla por 0.5s
+    this.setBallPossession(false);
+
+    // Cooldown de equipo: evita que compañeros atrapen el balón por error al disparar
+    const team = (this.team === 'home') ? this.scene.homeTeam : this.scene.awayTeam;
+    if (team) {
+      team.catchCooldown = 250; // 250ms de "gracia" para el equipo
     }
-    
-    // Patea la pelota
-    ball.kick(dirX, dirY);
-    
-    // Establecer cooldown para evitar pateos continuos
-    this.kickCooldown = 300; // 300ms entre pateos
-    
-    // Debug
-    console.log(`⚽ ${this.team} Player ${this.playerNumber} pateó hacia (${dirX}, ${dirY})`);
+    return true;
   }
-  
-  /**
-   * Obtiene la posición actual del jugador.
-   * @returns {Object} Objeto con propiedades x, y
-   */
-  getPosition() {
-    return {
-      x: this.sprite.x,
-      y: this.sprite.y
-    };
-  }
-  
-  /**
-   * Establece si el jugador tiene la pelota.
-   * @param {boolean} has - True si tiene la pelota
-   */
+
+  /** @param {boolean} has */
   setBallPossession(has) {
     this.hasBall = has;
-    // Cambiar color ligeramente si tiene la pelota
     if (has) {
-      this.sprite.setStrokeStyle(2, 0xffffff); // Borde blanco cuando tiene pelota
+      // Usar un tinte para indicar posesión o dejarlo así
+      this.sprite.setTint(0xaaffaa);
     } else {
-      this.sprite.setStrokeStyle(0);
+      this.sprite.clearTint();
     }
   }
-  
+
   /**
-   * Verifica si el jugador está cerca de una posición (para detección de posesión).
-   * @param {number} x - Posición X a verificar
-   * @param {number} y - Posición Y a verificar
-   * @param {number} distance - Distancia en píxeles para considerar "cerca"
-   * @returns {boolean} True si está cerca
+   * Mantiene la pelota pegada al jugador.
+   * @param {import('./Ball.js').default} ball
    */
-  isNearPosition(x, y, distance = 8) {
-    const dx = this.sprite.x - x;
-    const dy = this.sprite.y - y;
-    return Math.sqrt(dx * dx + dy * dy) < distance;
+  syncBallToPlayer(ball) {
+    if (!this.hasBall) return;
+    const s = ball.getSprite();
+    if (!s?.body) return;
+
+    // Bola pegada estáticamente al jugador sin saltar o girar
+    const finalOX = this.direction.x === 0 && this.direction.y === 0 ? 0 : this.direction.x * 4;
+    const finalOY = this.direction.x === 0 && this.direction.y === 0 ? 4 : this.direction.y * 4;
+
+    s.setPosition(this.sprite.x + finalOX, this.sprite.y + finalOY);
+    s.body.setVelocity(0, 0);
+    s.setAngle(0); // Forzar que la bola no gire visualmente
   }
-  
-  /**
-   * Actualización cada frame.
-   * @param {number} delta - Tiempo en ms desde el último frame
-   */
+
+  // ─── Acciones Especiales ───────────────────────────────────────────────────
+
+  fallDown() {
+    this.isFallen = true;
+    this.stop();
+    this.sprite.body.checkCollision.none = true; // Permite que otros pasen por encima
+    this.sprite.setAngle(90); // Acostado
+    this.sprite.setTint(0x555555); // Oscurecido
+    this.scene.time.delayedCall(1500, () => {
+      if (!this.sprite?.body) return;
+      this.isFallen = false;
+      this.sprite.body.checkCollision.none = false;
+      this.sprite.setAngle(0);
+      this.sprite.clearTint();
+      if (this.hasBall) this.setBallPossession(true); 
+    });
+  }
+
+  // ─── Utilidades ────────────────────────────────────────────────────────────
+
+  getPosition() { return { x: this.sprite.x, y: this.sprite.y }; }
+
+  getSprite() { return this.sprite; }
+
+  /** @param {number} x @param {number} y @param {number} [dist=8] */
+  isNearPosition(x, y, dist = 8) {
+    return Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < dist;
+  }
+
+  // ─── Loop ──────────────────────────────────────────────────────────────────
+
+  /** @param {number} delta ms */
   update(delta) {
-    // Reducir cooldown de pateo
-    if (this.kickCooldown > 0) {
-      this.kickCooldown -= delta;
+    if (this._kickCooldown > 0) this._kickCooldown -= delta;
+    if (this._catchCooldown > 0) this._catchCooldown -= delta;
+
+    if (this.isFallen) return;
+
+    // Animación de caminata "Nokia" (inclinación)
+    const speed = Math.hypot(this.sprite.body.velocity.x, this.sprite.body.velocity.y);
+    if (speed > 5) {
+      this._walkTimer = (this._walkTimer || 0) + delta;
+      // Rotación de ±12 grados
+      this.sprite.setAngle(Math.sin(this._walkTimer * 0.015) * 12);
+    } else {
+      this.sprite.setAngle(0);
+      this._walkTimer = 0;
     }
   }
-  
-  /**
-   * Obtiene el sprite del jugador para colisiones.
-   * @returns {Phaser.Physics.Arcade.Sprite} El sprite del jugador
-   */
-  getSprite() {
-    return this.sprite;
-  }
-  
-  /**
-   * Destruye el sprite del jugador.
-   */
-  destroy() {
-    if (this.sprite) {
-      this.sprite.destroy();
-    }
-  }
+
+  // ─── Limpieza ──────────────────────────────────────────────────────────────
+
+  destroy() { this.sprite?.destroy(); }
 }

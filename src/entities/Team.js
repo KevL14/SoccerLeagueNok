@@ -1,229 +1,171 @@
 /**
  * src/entities/Team.js
- * 
- * Entidad que representa un equipo completo.
- * Maneja:
- * - Gestión de jugadores (array)
- * - Gestión del arquero
- * - Formación táctica (posiciones iniciales)
- * - Rotación y control de jugadores
- * - Información de equipo (nombre, color)
+ *
+ * Formaciones alineadas con el campo vertical (120×160).
+ *
+ * HOME defiende arriba (portería y≈10), ataca abajo.
+ * AWAY defiende abajo (portería y≈157), ataca arriba.
  */
 
 import Phaser from 'phaser';
 
+import { FIELD } from '../config/fieldConstants.js';
+
+// isHome: true si es el equipo que empieza arriba (defiende arriba).
+// isOffensive: true para posiciones de ataque (4-3-3 agresivo), false para inicio (todos en su campo).
+const calcFormation = (isHome, isOffensive) => {
+  const dy = isHome ? 1 : -1;
+  const midY = FIELD.CY;
+  
+  // Defensa: Bien atrás
+  const defY = isOffensive ? (isHome ? FIELD.TOP + 35 : FIELD.BOTTOM - 35) : (midY - dy * 65);
+  // Medio: Espaciado
+  const midY_pos = isOffensive ? midY : (midY - dy * 35);
+  
+  // Ataque: 
+  // Si es ofensivo, van al área rival. 
+  // Si es defensivo, los dejamos un poco antes de la línea media (12px de margen)
+  const fwdY = isOffensive 
+    ? (isHome ? FIELD.BOTTOM - 35 : FIELD.TOP + 35)
+    : (midY - dy * 12); 
+
+  return [
+    // 4 Defensas
+    { x: 15, y: defY }, { x: 45, y: defY }, { x: 75, y: defY }, { x: 105, y: defY },
+    // 3 Medios
+    { x: 25, y: midY_pos }, { x: 60, y: midY_pos }, { x: 95, y: midY_pos },
+    // 3 Delanteros
+    { x: 25, y: fwdY }, { x: 60, y: fwdY }, { x: 95, y: fwdY }
+  ];
+};
+
+const FORMATIONS = {
+  home: {
+    offensive: calcFormation(true, true),
+    defensive: calcFormation(true, false)
+  },
+  away: {
+    offensive: calcFormation(false, true),
+    defensive: calcFormation(false, false)
+  }
+};
+
 export default class Team {
   /**
-   * Constructor del equipo.
-   * @param {Phaser.Scene} scene - La escena actual
-   * @param {string} name - Nombre del equipo
-   * @param {string} teamType - 'home' o 'away'
-   * @param {GoalKeeper} goalkeeper - Instancia del arquero
+   * @param {Phaser.Scene} scene
+   * @param {string} name
+   * @param {'home'|'away'} teamType
+   * @param {import('./GoalKeeper.js').default} goalkeeper
    */
   constructor(scene, name, teamType, goalkeeper) {
-    this.scene = scene;
-    this.name = name;
-    this.teamType = teamType; // 'home' o 'away'
-    
-    // Equipo
-    this.goalkeeper = goalkeeper;
-    this.players = []; // Array de jugadores
-    this.activePlayerIndex = 0; // Índice del jugador actual (para control de entrada)
-    
-    // Colores del equipo (para identificación visual)
-    this.color = teamType === 'home' ? 0x00ff00 : 0xffff00; // Verde o amarillo
-    
-    // Estadísticas
-    this.possessionTime = 0; // Tiempo con posesión de pelota
-    this.shotsOnTarget = 0; // Intentos a portería
+    this.scene    = scene;
+    this.name     = name;
+    this.teamType = teamType;
+
+    this.goalkeeper        = goalkeeper;
+    /** @type {import('./Player.js').default[]} */
+    this.players           = [];
+    this.activePlayerIndex = 0;
+
+    this.possessionTime = 0;
+    this.shotsOnTarget  = 0;
+    this.catchCooldown  = 0; 
+    this.currentFormation = 'defensive';
   }
-  
-  /**
-   * Agrega un jugador al equipo.
-   * @param {Player} player - Instancia del jugador
-   */
+
+  setFormation(type) {
+    if (type === 'offensive' || type === 'defensive') {
+      this.currentFormation = type;
+    }
+  }
+
+  update(delta) {
+    if (this.catchCooldown > 0) {
+      this.catchCooldown -= delta;
+    }
+  }
+
+  // ─── Jugadores ─────────────────────────────────────────────────────────────
+
+  /** @param {import('./Player.js').default} player */
   addPlayer(player) {
     this.players.push(player);
-    console.log(`👥 ${this.name}: Jugador ${player.playerNumber} agregado (Total: ${this.players.length})`);
   }
-  
-  /**
-   * Obtiene un jugador específico por índice.
-   * @param {number} index - Índice del jugador
-   * @returns {Player} El jugador en ese índice
-   */
+
+  /** @param {number} index @returns {import('./Player.js').default|null} */
   getPlayer(index) {
-    if (index >= 0 && index < this.players.length) {
-      return this.players[index];
-    }
-    return null;
+    return this.players[index] ?? null;
   }
-  
-  /**
-   * Obtiene el jugador actualmente controlable (para entrada del usuario).
-   * @returns {Player} El jugador activo
-   */
+
   getActivePlayer() {
-    return this.players[this.activePlayerIndex];
+    return this.players[this.activePlayerIndex] ?? null;
   }
-  
-  /**
-   * Cambia el jugador activo (para permitir cambiar entre jugadores).
-   * @param {number} index - Nuevo índice del jugador
-   */
+
+  /** @param {number} index */
   setActivePlayer(index) {
     if (index >= 0 && index < this.players.length) {
       this.activePlayerIndex = index;
-      console.log(`🎮 ${this.name}: Jugador ${index} ahora activo`);
     }
   }
-  
-  /**
-   * Obtiene todos los jugadores del equipo.
-   * @returns {Array} Array de jugadores
-   */
-  getAllPlayers() {
-    return this.players;
-  }
-  
-  /**
-   * Obtiene el total de jugadores.
-   * @returns {number} Cantidad de jugadores
-   */
-  getPlayerCount() {
-    return this.players.length;
-  }
-  
-  /**
-   * Resetea las posiciones iniciales de todos los jugadores.
-   * Nota: Requiere posiciones predefinidas por formación.
-   */
+
+  getAllPlayers() { return this.players; }
+
+  getPlayerCount() { return this.players.length; }
+
+  // ─── Formación ─────────────────────────────────────────────────────────────
+
   resetPositions() {
-    // Formación base: 4-3-3 o similar
-    const formations = {
-      home: [
-        { x: 30, y: 30 },  // Defensa izquierda
-        { x: 30, y: 60 },  // Defensa central izquierda
-        { x: 30, y: 90 },  // Defensa derecha
-        { x: 50, y: 45 },  // Mediocampista izquierdo
-        { x: 50, y: 60 },  // Mediocampista central
-        { x: 50, y: 75 },  // Mediocampista derecho
-        { x: 80, y: 30 },  // Delantero izquierdo
-        { x: 80, y: 60 },  // Delantero central
-        { x: 80, y: 90 }   // Delantero derecho
-      ],
-      away: [
-        { x: 130, y: 30 }, // Defensa izquierda (espejo)
-        { x: 130, y: 60 }, // Defensa central izquierda
-        { x: 130, y: 90 }, // Defensa derecha
-        { x: 110, y: 45 }, // Mediocampista izquierdo
-        { x: 110, y: 60 }, // Mediocampista central
-        { x: 110, y: 75 }, // Mediocampista derecho
-        { x: 80, y: 30 },  // Delantero izquierdo
-        { x: 80, y: 60 },  // Delantero central
-        { x: 80, y: 90 }   // Delantero derecho
-      ]
-    };
-    
-    // Aplicar posiciones iniciales
-    const positions = formations[this.teamType];
-    for (let i = 0; i < this.players.length && i < positions.length; i++) {
-      const player = this.players[i];
+    const positions = FORMATIONS[this.teamType][this.currentFormation];
+    this.players.forEach((player, i) => {
       const pos = positions[i];
+      if (!pos) return;
       player.sprite.setPosition(pos.x, pos.y);
       player.sprite.body.setVelocity(0, 0);
-    }
-    
-    console.log(`🔄 ${this.name}: Posiciones resetadas`);
+      player.setBallPossession(false);
+    });
+    this.goalkeeper.resetPosition();
   }
-  
+
+  /** @returns {{x:number,y:number}|null} Posición de formación para el índice dado */
+  getFormationPos(index) {
+    return FORMATIONS[this.teamType][this.currentFormation]?.[index] ?? null;
+  }
+
+  // ─── Utilidades ────────────────────────────────────────────────────────────
+
   /**
-   * Obtiene el jugador más cercano a una posición.
-   * Útil para detección de posesión automática.
-   * @param {number} x - Posición X
-   * @param {number} y - Posición Y
-   * @returns {Player} El jugador más cercano
+   * Jugador más cercano a (x, y).
+   * @param {number} x @param {number} y
    */
   getNearestPlayer(x, y) {
-    if (this.players.length === 0) return null;
-    
-    let nearest = this.players[0];
-    let minDistance = Phaser.Math.Distance.Between(nearest.sprite.x, nearest.sprite.y, x, y);
-    
-    for (let i = 1; i < this.players.length; i++) {
-      const player = this.players[i];
-      const distance = Phaser.Math.Distance.Between(player.sprite.x, player.sprite.y, x, y);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearest = player;
-      }
-    }
-    
-    return nearest;
+    if (!this.players.length) return null;
+    return this.players.reduce((best, p) => {
+      const d1 = Phaser.Math.Distance.Between(p.sprite.x, p.sprite.y, x, y);
+      const d2 = Phaser.Math.Distance.Between(best.sprite.x, best.sprite.y, x, y);
+      return d1 < d2 ? p : best;
+    });
   }
-  
-  /**
-   * Detiene a todos los jugadores (pausa).
-   */
+
   stopAll() {
-    this.players.forEach(player => player.stop());
+    this.players.forEach(p => p.stop());
   }
-  
-  /**
-   * Obtiene el nombre del equipo.
-   * @returns {string} Nombre del equipo
-   */
-  getName() {
-    return this.name;
-  }
-  
-  /**
-   * Obtiene el tipo de equipo.
-   * @returns {string} 'home' o 'away'
-   */
-  getTeamType() {
-    return this.teamType;
-  }
-  
-  /**
-   * Incrementa estadística de posesión.
-   * @param {number} time - Tiempo en ms
-   */
-  addPossessionTime(time) {
-    this.possessionTime += time;
-  }
-  
-  /**
-   * Incrementa estadística de intentos a portería.
-   */
-  addShotOnTarget() {
-    this.shotsOnTarget++;
-  }
-  
-  /**
-   * Obtiene estadísticas del equipo.
-   * @returns {Object} Objeto con estadísticas
-   */
+
+  // ─── Stats ─────────────────────────────────────────────────────────────────
+
+  /** @param {number} ms */
+  addPossessionTime(ms) { this.possessionTime += ms; }
+  addShotOnTarget()      { this.shotsOnTarget++; }
+
   getStats() {
-    return {
-      name: this.name,
-      players: this.players.length,
-      possession: this.possessionTime,
-      shots: this.shotsOnTarget
-    };
+    return { name: this.name, players: this.players.length,
+             possession: this.possessionTime, shots: this.shotsOnTarget };
   }
-  
-  /**
-   * Destruye todos los sprites del equipo.
-   */
+
+  // ─── Limpieza ──────────────────────────────────────────────────────────────
+
   destroy() {
-    // Destruir arquero
-    if (this.goalkeeper) {
-      this.goalkeeper.destroy();
-    }
-    
-    // Destruir jugadores
-    this.players.forEach(player => player.destroy());
+    this.goalkeeper?.destroy();
+    this.players.forEach(p => p.destroy());
     this.players = [];
   }
 }

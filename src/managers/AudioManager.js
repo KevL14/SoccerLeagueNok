@@ -1,50 +1,51 @@
-// src/managers/AudioManager.js
-// Este archivo gestiona todos los sonidos y música del juego.
-// Centraliza la reproducción, pausa y control de volumen.
-// Mantiene estética arcade retro con efectos simples y cortos.
-
-import Phaser from 'phaser';
+/**
+ * src/managers/AudioManager.js
+ *
+ * Gestiona todos los sonidos del juego.
+ * Si un archivo de audio no existe, lo ignora silenciosamente.
+ */
 
 export default class AudioManager {
+  /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
+    /** @type {Record<string, Phaser.Sound.BaseSound>} */
     this.sounds = {};
+
+    /** Claves de audio que se intentarán cargar. */
+    this.keys = ['goal', 'kick', 'whistle', 'menu'];
   }
 
   preload() {
-    // Cargar sonidos retro
-    this.scene.load.audio('goal', 'assets/sounds/goal.wav');
-    this.scene.load.audio('kick', 'assets/sounds/kick.wav');
-    this.scene.load.audio('whistle', 'assets/sounds/whistle.wav');
-    this.scene.load.audio('menu', 'assets/sounds/menu.wav');
+    this.keys.forEach(key => {
+      this.scene.load.audio(key, `assets/sounds/${key}.wav`);
+    });
   }
 
   create() {
-    // Inicializar sonidos cargados
-    this.sounds.goal = this.scene.sound.add('goal');
-    this.sounds.kick = this.scene.sound.add('kick');
-    this.sounds.whistle = this.scene.sound.add('whistle');
-    this.sounds.menu = this.scene.sound.add('menu');
+    this.keys.forEach(key => {
+      // Registrar solo si el asset se cargó correctamente
+      if (this.scene.cache.audio.exists(key)) {
+        this.sounds[key] = this.scene.sound.add(key);
+      }
+    });
   }
 
+  /** @param {string} key */
   play(key) {
-    // Reproduce un sonido específico
-    if (this.sounds[key]) {
-      this.sounds[key].play();
-    }
+    this.sounds[key]?.play();
   }
 
+  /** @param {string} key */
   stop(key) {
-    // Detiene un sonido específico
-    if (this.sounds[key]) {
-      this.sounds[key].stop();
-    }
+    this.sounds[key]?.stop();
   }
 
+  /**
+   * @param {string} key
+   * @param {number} value  0.0 – 1.0
+   */
   setVolume(key, value) {
-    // Ajusta volumen de un sonido
-    if (this.sounds[key]) {
-      this.sounds[key].setVolume(value);
-    }
+    this.sounds[key]?.setVolume(value);
   }
 }

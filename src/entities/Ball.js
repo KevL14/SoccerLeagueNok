@@ -1,128 +1,111 @@
 /**
  * src/entities/Ball.js
- * 
- * Entidad que representa la pelota del partido.
- * Maneja:
- * - Física arcade (velocidad, rebote, fricción)
- * - Colisiones con jugadores, arquero y bordes
- * - Posición y movimiento independiente
- * - Posibilidad de ser pateada (impulso)
+ *
+ * Pelota con física arcade estilo Nokia.
+ * - Poca fricción para que ruede naturalmente
+ * - Rebote bajo para que no vuele
+ * - Velocidad máxima controlada
  */
 
 import Phaser from 'phaser';
 
+const STOP_THRESHOLD = 5;    // px/s → detener pelota completamente
+const MAX_SPEED      = 180;   // px/s máximo
+const KICK_SCALE     = 130;   // potencia base de pateo
+const DRAG           = 40;    // px/s² de fricción (cuánto se frena por segundo)
+const BOUNCE         = 0.25; // rebote al chocar con bordes del mundo
+
 export default class Ball {
   /**
-   * Constructor de la pelota.
-   * @param {Phaser.Scene} scene - La escena actual
-   * @param {number} x - Posición inicial X
-   * @param {number} y - Posición inicial Y
+   * @param {Phaser.Scene} scene
+   * @param {number} x
+   * @param {number} y
    */
   constructor(scene, x, y) {
     this.scene = scene;
-    
-    // Crear sprite de la pelota
-    // Nota: Si no existe assets/sprites/ball.png, usaremos un círculo retro
-    this.sprite = scene.add.circle(x, y, 2, 0x00ff00);
-    
-    // Habilitar física arcade
+
+    // Sprite: pequeño círculo blanco/negro estilo Nokia
+    this.sprite = scene.add.circle(x, y, 3, 0xffffff);
+    this.sprite.setStrokeStyle(1, 0x333333);
     scene.physics.world.enable(this.sprite);
-    
-    // Configurar propiedades físicas
+
     this.sprite.body.setCollideWorldBounds(true);
-    this.sprite.body.setBounce(0.8); // Rebote retro
-    this.sprite.body.setLinearDrag(0.95); // Fricción leve
-    this.sprite.body.setDrag(0.95);
-    
-    // Variables de control
-    this.velocity = { x: 0, y: 0 };
+    this.sprite.body.setBounce(BOUNCE);
+    this.sprite.body.setDrag(DRAG);
+    this.sprite.body.setMaxSpeed(MAX_SPEED);
+
     this.isMoving = false;
-    this.maxSpeed = 200; // Velocidad máxima arcade retro
   }
-  
+
+  // ─── Acciones ──────────────────────────────────────────────────────────────
+
   /**
-   * Patea la pelota aplicando impulso.
-   * @param {number} forceX - Fuerza en eje X
-   * @param {number} forceY - Fuerza en eje Y
+   * Aplica un impulso normalizado a la pelota.
+   * @param {number} forceX
+   * @param {number} forceY
    */
-  kick(forceX, forceY) {
-    // Aplicar velocidad a la pelota
-    this.sprite.body.setVelocity(forceX * 150, forceY * 150);
+  kick(dirX, dirY, powerRatio = 1) {
+    const len = Math.hypot(dirX, dirY);
+    let vx = 0, vy = 1;
+    if (len > 0) {
+      vx = dirX / len;
+      vy = dirY / len;
+    }
+    
     this.isMoving = true;
-    
-    // Debug: log de la patada
-    console.log(`🔵 Pelota pateada: velocidad (${forceX * 150}, ${forceY * 150})`);
+    this.sprite.body.setVelocity(vx * KICK_SCALE * powerRatio, vy * KICK_SCALE * powerRatio);
   }
-  
-  /**
-   * Obtiene la posición actual de la pelota.
-   * @returns {Object} Objeto con propiedades x, y
-   */
-  getPosition() {
-    return {
-      x: this.sprite.x,
-      y: this.sprite.y
-    };
-  }
-  
-  /**
-   * Obtiene la velocidad actual de la pelota.
-   * @returns {Object} Objeto con propiedades x, y
-   */
-  getVelocity() {
-    return {
-      x: this.sprite.body.velocity.x,
-      y: this.sprite.body.velocity.y
-    };
-  }
-  
-  /**
-   * Establece la posición de la pelota.
-   * @param {number} x - Nueva posición X
-   * @param {number} y - Nueva posición Y
-   */
-  setPosition(x, y) {
-    this.sprite.setPosition(x, y);
-    this.sprite.body.setVelocity(0, 0);
-    this.isMoving = false;
-  }
-  
-  /**
-   * Detiene el movimiento de la pelota.
-   */
+
   stop() {
     this.sprite.body.setVelocity(0, 0);
     this.isMoving = false;
   }
-  
-  /**
-   * Obtiene el sprite de la pelota para colisiones.
-   * @returns {Phaser.Physics.Arcade.Sprite} El sprite de la pelota
-   */
-  getSprite() {
-    return this.sprite;
+
+  // ─── Getters / Setters ─────────────────────────────────────────────────────
+
+  getPosition() {
+    return { x: this.sprite.x, y: this.sprite.y };
   }
-  
-  /**
-   * Actualización cada frame (opcional para lógica de pelota).
-   */
+
+  getVelocity() {
+    return { x: this.sprite.body.velocity.x, y: this.sprite.body.velocity.y };
+  }
+
+  /** @param {number} x @param {number} y */
+  reset(x, y) {
+    this.stop();
+    this.sprite.setPosition(x, y);
+    if (this.sprite.body) {
+      this.sprite.body.reset(x, y);
+    }
+  }
+
+  /** @param {number} x @param {number} y */
+  setPosition(x, y) {
+    this.sprite.setPosition(x, y);
+    if (this.sprite.body) {
+      this.sprite.body.reset(x, y); // Sync inmediato del motor de física
+    }
+  }
+
+  getSprite() { return this.sprite; }
+
+  // ─── Loop ──────────────────────────────────────────────────────────────────
+
   update() {
-    // Verificar si la pelota se está moviendo
-    const speed = Phaser.Math.Distance.Between(0, 0, this.sprite.body.velocity.x, this.sprite.body.velocity.y);
-    this.isMoving = speed > 5;
-    
-    // Si salió de los límites verticales (gol potencial), resetear
-    if (this.sprite.x < 0 || this.sprite.x > 160) {
-      this.sprite.body.setVelocity(0, 0);
+    const { x: vx, y: vy } = this.sprite.body.velocity;
+    const speed = Math.hypot(vx, vy);
+
+    if (speed < STOP_THRESHOLD) {
+      this.stop();
+    } else {
+      this.isMoving = true;
+      // Animación de rotación del balón
+      this.sprite.angle += speed * 0.1;
     }
   }
-  
-  /**
-   * Destruye el sprite de la pelota.
-   */
-  destroy() {
-    if (this.sprite) {
-      this.sprite.destroy();
-    }
-  }
+
+  // ─── Limpieza ──────────────────────────────────────────────────────────────
+
+  destroy() { this.sprite?.destroy(); }
 }

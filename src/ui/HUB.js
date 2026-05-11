@@ -1,179 +1,140 @@
 /**
  * src/ui/HUB.js
- * 
- * Clase que gestiona el HUD (Heads-Up Display) del partido.
- * Muestra:
- * - Marcador en tiempo real
- * - Cronómetro del partido
- * - Indicadores de posesión (opcional)
- * - Estado del juego
- * - Estética Nokia pixel art (texto verde sobre fondo negro)
+ *
+ * HUD del partido en la franja superior (y=0-10) del canvas 120×160.
+ * Muestra marcador, cronómetro e indicador de posesión.
  */
 
 import Phaser from 'phaser';
 
-export default class HUB {
-  /**
-   * Constructor del HUD.
-   * @param {Phaser.Scene} scene - La escena actual (MatchScene)
-   */
+export default class HUD {
+  /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
 
-    // Elementos de texto retro
-    this.scoreText = null;
-    this.timerText = null;
-    this.homeTeamName = null;
-    this.awayTeamName = null;
+    this.scoreText           = null;
+    this.timerText           = null;
     this.possessionIndicator = null;
 
-    // Variables internas
-    this.homeScore = 0;
-    this.awayScore = 0;
-    this.elapsedSeconds = 0;
+    this.homeScore    = 0;
+    this.awayScore    = 0;
+    this._elapsedSecs = 0;
   }
 
-  /**
-   * Crea los elementos visuales del HUD.
-   * Debe llamarse una sola vez en MatchScene.create()
-   */
   create() {
-    // Fondo superior con información (banda retro)
-    this.scene.add.rectangle(80, 8, 160, 14, 0x000000);
-    
-    // Borde superior
-    const topBorder = this.scene.add.rectangle(80, 8, 160, 14, undefined, 0);
-    topBorder.setStrokeStyle(1, 0x00ff00);
+    // La franja superior (y=0-10) ya tiene fondo dibujado en _drawField()
+    const HY = 5; // Y centro de la franja
 
-    // MARCADOR: Equipo Local - Equipo Visitante (centro arriba)
-    this.scoreText = this.scene.add.text(80, 3, '0 - 0', {
-      fontFamily: 'RetroFont',
-      fontSize: '8px',
+    // Posesión (izquierda)
+    this.possessionIndicator = this.scene.add.text(3, HY, '▶', {
+      fontFamily: 'monospace',
+      fontSize: '7px',
       color: '#00ff00',
-      align: 'center'
-    }).setOrigin(0.5, 0);
+    }).setOrigin(0, 0.5).setScrollFactor(0);
 
-    // TIMER: Tiempo del partido (derecha arriba)
-    this.timerText = this.scene.add.text(155, 3, '00:00', {
-      fontFamily: 'RetroFont',
+    // Marcador (centro)
+    this.scoreText = this.scene.add.text(60, HY, '0 - 0', {
+      fontFamily: 'monospace',
       fontSize: '8px',
-      color: '#00ff00'
-    }).setOrigin(1, 0);
+      color: '#ffffff',
+    }).setOrigin(0.5, 0.5).setScrollFactor(0);
 
-    // POSESIÓN: Indicador visual simple (izquierda arriba)
-    this.possessionIndicator = this.scene.add.text(5, 3, '●○', {
-      fontFamily: 'RetroFont',
-      fontSize: '6px',
-      color: '#00ff00'
-    }).setOrigin(0, 0);
-
-    console.log('✅ HUB creado correctamente');
+    // Timer (derecha)
+    this.timerText = this.scene.add.text(117, HY, '00:00', {
+      fontFamily: 'monospace',
+      fontSize: '7px',
+      color: '#00ff00',
+    }).setOrigin(1, 0.5).setScrollFactor(0);
   }
 
-  /**
-   * Actualiza el marcador mostrado en pantalla.
-   * @param {number} homeScore - Goles del equipo local
-   * @param {number} awayScore - Goles del equipo visitante
-   */
-  updateScore(homeScore, awayScore) {
-    this.homeScore = homeScore;
-    this.awayScore = awayScore;
-    this.scoreText.setText(`${homeScore} - ${awayScore}`);
+  // ─── Actualización ─────────────────────────────────────────────────────────
+
+  /** @param {number} home @param {number} away */
+  updateScore(home, away) {
+    this.homeScore = home;
+    this.awayScore = away;
+    this.scoreText.setText(`${home} - ${away}`);
+    // Animación de marcador al gol
+    this.scene.tweens.add({
+      targets: this.scoreText,
+      scaleX: 1.4,
+      scaleY: 1.4,
+      duration: 80,
+      yoyo: true,
+    });
   }
 
-  /**
-   * Actualiza el cronómetro del partido.
-   * @param {number} milliseconds - Tiempo en milisegundos desde inicio
-   */
-  updateTimer(milliseconds) {
-    // Convertir ms a segundos y luego a formato mm:ss
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    
-    const formatted = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    this.timerText.setText(formatted);
-    
-    this.elapsedSeconds = totalSeconds;
+  /** @param {number} ms */
+  updateTimer(ms) {
+    const total   = Math.floor(ms / 1000);
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    this.timerText.setText(
+      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    );
+    this._elapsedSecs = total;
   }
 
-  /**
-   * Actualiza el indicador de posesión (cuál equipo tiene la pelota).
-   * @param {string} team - 'home', 'away', o null (ninguno)
-   */
+  /** @param {'home'|'away'|null} team */
   updatePossession(team) {
-    // ● = equipo local, ○ = equipo visitante
+    if (!this.possessionIndicator) return;
     if (team === 'home') {
-      this.possessionIndicator.setText('●○');
+      this.possessionIndicator.setText('▶').setColor('#00ff00');
     } else if (team === 'away') {
-      this.possessionIndicator.setText('○●');
+      this.possessionIndicator.setText('◀').setColor('#ffff00');
     } else {
-      this.possessionIndicator.setText('●○');
+      this.possessionIndicator.setText('·').setColor('#448844');
+    }
+  }
+
+  getScore() {
+    return { home: this.homeScore, away: this.awayScore };
+  }
+
+  getElapsedSeconds() {
+    return this._elapsedSecs;
+  }
+
+  /**
+   * Muestra un mensaje persistente hasta que se llame a hideAnnouncement.
+   * @param {string} text
+   */
+  showAnnouncement(text) {
+    if (this.announcement) this.announcement.destroy();
+    this.announcement = this.scene.add.text(60, 45, text, {
+      fontFamily: 'monospace',
+      fontSize: '7px',
+      color: '#00ff00',
+      backgroundColor: '#000000cc',
+      padding: { x: 4, y: 2 }
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+  }
+
+  hideAnnouncement() {
+    if (this.announcement) {
+      this.announcement.destroy();
+      this.announcement = null;
     }
   }
 
   /**
-   * Obtiene el marcador actual.
-   * @returns {Object} Objeto {home, away} con los goles
+   * Muestra un mensaje temporal centrado en el campo.
+   * @param {string} text
+   * @param {number} [duration=1200]
    */
-  getScore() {
-    return {
-      home: this.homeScore,
-      away: this.awayScore
-    };
-  }
-
-  /**
-   * Obtiene el tiempo transcurrido.
-   * @returns {number} Tiempo en segundos
-   */
-  getElapsedSeconds() {
-    return this.elapsedSeconds;
-  }
-
-  /**
-   * Muestra un mensaje temporal en pantalla.
-   * Útil para notificaciones retro.
-   * @param {string} text - Texto del mensaje
-   * @param {number} duration - Duración en ms (por defecto 1000)
-   */
-  showMessage(text, duration = 1000) {
-    const message = this.scene.add.text(80, 60, text, {
-      fontFamily: 'RetroFont',
+  showMessage(text, duration = 1200) {
+    const msg = this.scene.add.text(60, 85, text, {
+      fontFamily: 'monospace',
       fontSize: '8px',
-      color: '#ffff00' // Amarillo para mensajes
-    }).setOrigin(0.5);
+      color: '#ffff00',
+    }).setOrigin(0.5).setScrollFactor(0);
 
-    // Desaparecer después del tiempo especificado
-    this.scene.time.delayedCall(duration, () => {
-      message.destroy();
-    });
+    this.scene.time.delayedCall(duration, () => msg.destroy());
   }
 
-  /**
-   * Destaca un evento en el HUD (parpadeo).
-   * Útil para goles, tarjetas, etc.
-   */
-  highlightEvent() {
-    this.scene.tweens.add({
-      targets: [this.scoreText],
-      scaleX: [1, 1.2],
-      scaleY: [1, 1.2],
-      duration: 100,
-      yoyo: true,
-      repeat: 2
-    });
-  }
-
-  /**
-   * Limpia los elementos del HUD.
-   */
   destroy() {
-    if (this.scoreText) this.scoreText.destroy();
-    if (this.timerText) this.timerText.destroy();
-    if (this.possessionIndicator) this.possessionIndicator.destroy();
-    if (this.homeTeamName) this.homeTeamName.destroy();
-    if (this.awayTeamName) this.awayTeamName.destroy();
+    this.scoreText?.destroy();
+    this.timerText?.destroy();
+    this.possessionIndicator?.destroy();
   }
 }
-

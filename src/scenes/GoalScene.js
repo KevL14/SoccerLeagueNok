@@ -1,13 +1,9 @@
 /**
  * src/scenes/GoalScene.js
- * 
- * Escena que se muestra cuando se marca un gol.
- * Maneja:
- * - Animación retro del gol (parpadeo, texto)
- * - Sonido de gol (si existe AudioManager)
- * - Estadísticas del gol
- * - Temporización: espera 3 segundos y vuelve a MatchScene
- * - Estética Nokia pixel art verde
+ *
+ * Escena de celebración de gol.
+ * Se muestra 3 segundos (o hasta que el jugador presione ENTER)
+ * y luego vuelve a MatchScene reiniciando la posición.
  */
 
 import Phaser from 'phaser';
@@ -17,91 +13,82 @@ export default class GoalScene extends Phaser.Scene {
     super({ key: 'GoalScene' });
   }
 
-  /**
-   * Recibe datos de la escena anterior (quién anotó, equipo, etc).
-   * Se llama automáticamente cuando se lanza esta escena.
-   */
+  /** @param {{ team: 'home'|'away', scorer?: string, time?: number }} data */
   init(data) {
-    // Datos del gol (pasados desde ScoreSystem)
-    this.goalData = data || {
-      team: 'home', // Equipo que anotó
-      scorer: null, // Jugador que anotó (opcional)
-      time: 0       // Tiempo en que se anotó
-    };
+    this.goalData = data ?? { team: 'home', scorer: null, time: 0 };
+    this._continued = false; // guard: ejecutar continueToMatch una sola vez
   }
 
   create() {
-    // Fondo negro retro Nokia
-    this.add.rectangle(80, 60, 160, 120, 0x000000);
+    const cx = 60;
 
-    // Texto grande "GOAL" parpadeante
-    this.goalText = this.add.text(50, 40, 'GOAL!!!', {
-      fontFamily: 'RetroFont',
+    // Fondo negro
+    this.add.rectangle(cx, 80, 160, 160, 0x000000);
+
+    // Texto "GOAL!!!" parpadeante
+    const goalText = this.add.text(cx, 50, 'GOAL!!!', {
+      fontFamily: 'monospace',
       fontSize: '20px',
-      color: '#00ff00' // Verde Nokia
-    });
-    
-    // Animar parpadeo
+      color: '#00ff00',
+    }).setOrigin(0.5);
+
     this.tweens.add({
-      targets: [this.goalText],
-      alpha: [1, 0.3],
+      targets: goalText,
+      alpha: { from: 1, to: 0.2 },
       duration: 200,
-      repeat: 10, // Parpadea 10 veces
-      yoyo: true
+      yoyo: true,
+      repeat: 10,
     });
 
-    // Información adicional del gol
-    const teamName = this.goalData.team === 'home' ? 'EQUIPO LOCAL' : 'EQUIPO VISITANTE';
-    this.add.text(30, 75, teamName, {
-      fontFamily: 'RetroFont',
+    // Equipo que anotó
+    const teamLabel = this.goalData.team === 'home' ? 'EQUIPO LOCAL' : 'EQUIPO VISITANTE';
+    this.add.text(cx, 80, teamLabel, {
+      fontFamily: 'monospace',
       fontSize: '8px',
-      color: '#00ff00'
-    });
+      color: '#00ff00',
+    }).setOrigin(0.5);
 
-    // Si existe información del anotador
+    // Anotador (opcional)
     if (this.goalData.scorer) {
-      this.add.text(30, 85, `Anotador: ${this.goalData.scorer}`, {
-        fontFamily: 'RetroFont',
+      this.add.text(cx, 92, `Anotador: ${this.goalData.scorer}`, {
+        fontFamily: 'monospace',
         fontSize: '6px',
-        color: '#00ff00'
-      });
+        color: '#00aa00',
+      }).setOrigin(0.5);
     }
 
-    // Presionar ENTER para continuar (opcional)
-    this.input.keyboard.on('keydown-ENTER', () => {
-      this.continueToMatch();
-    });
+    // Instrucción
+    this.add.text(cx, 115, 'ENTER para continuar', {
+      fontFamily: 'monospace',
+      fontSize: '6px',
+      color: '#007700',
+    }).setOrigin(0.5);
 
-    // Auto-continuar después de 3 segundos
-    this.time.delayedCall(3000, () => {
-      this.continueToMatch();
-    });
+    // Sonido de gol
+    const bootScene = this.scene.get('BootScene');
+    bootScene?.audioManager?.play('goal');
 
-    // Reproducir sonido de gol si existe
-    if (this.scene.get('BootScene')?.audioManager) {
-      this.scene.get('BootScene').audioManager.play('goal');
-    }
-
-    console.log(`⚽ GOAL por ${this.goalData.team}!`);
+    // Continuar automáticamente o con ENTER (solo una vez)
+    this.time.delayedCall(3000, () => this.continueToMatch());
+    this.input.keyboard.once('keydown-ENTER', () => this.continueToMatch());
   }
 
-  /**
-   * Continúa hacia MatchScene.
-   */
   continueToMatch() {
-    // Detener cualquier tween activo
+    if (this._continued) return;
+    this._continued = true;
+
     this.tweens.killAll();
 
-    // Volver a MatchScene
+    const matchScene = this.scene.get('MatchScene');
+    matchScene?.resetMatch?.();
+
     this.scene.stop('GoalScene');
     this.scene.resume('MatchScene');
+
+    if (matchScene) matchScene.matchPaused = false;
   }
 
-  /**
-   * Si el usuario presiona ESC, vuelve sin continuar.
-   */
   shutdown() {
-    // Limpiar listeners
     this.tweens.killAll();
   }
 }
