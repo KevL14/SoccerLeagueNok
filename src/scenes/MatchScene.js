@@ -574,13 +574,13 @@ export default class MatchScene extends Phaser.Scene {
       this.matchTime += delta;
       this.events.emit('updateTimer', this.matchTime);
 
-      if (!this.halfTimeReached && this.matchTime >= 5000) {
+      if (!this.halfTimeReached && this.matchTime >= 45000) {
         this.halfTimeReached = true;
         this._startHalfTime();
         return;
       }
 
-      if (this.matchTime >= 1000) {
+      if (this.matchTime >= 90000) {
         this.fullTimeReached = true;
         this._startFullTime();
         return;

@@ -19,22 +19,22 @@ export default class FullTimeScene extends Phaser.Scene {
     const cx = 40; // Centro horizontal (80/2)
     const cy = 40; // Centro vertical (80/2)
 
-    // Fondo con doble borde pixelado — Ajustado a 80x80
-    this.add.rectangle(cx, cy, 76, 76, 0x00ff00);
-    this.add.rectangle(cx, cy, 74, 74, 0x000000);
-    this.add.rectangle(cx, cy, 70, 70, 0x000000).setStrokeStyle(1, 0x005500);
+    // Fondo Blanco con borde negro
+    this.add.rectangle(cx, cy, 76, 76, 0x000000);
+    this.add.rectangle(cx, cy, 74, 74, 0xffffff);
+    this.add.rectangle(cx, cy, 70, 70, 0xffffff).setStrokeStyle(1, 0xeeeeee);
 
-    // Título (Pixel Art)
-    this.drawPixelText(cx, cy - 28, 'FIN PARTIDO', 0x00ff00, true);
+    // Título (Negro sobre Blanco)
+    this.drawPixelText(cx, cy - 28, 'FIN PARTIDO', 0x000000, true);
 
     // Línea divisoria
-    this.add.rectangle(cx, cy - 20, 60, 1, 0x005500);
+    this.add.rectangle(cx, cy - 20, 60, 1, 0xdddddd);
 
     // Etiquetas de equipos
-    this.drawPixelText(cx, cy - 14, 'LOCAL VISIT', 0x00aa00, true);
+    this.drawPixelText(cx, cy - 14, 'LOCAL VISIT', 0x444444, true);
 
     // Marcador final (Pixel Art)
-    this.drawPixelText(cx, cy - 4, `${this.finalScore.home}-${this.finalScore.away}`, 0xffffff, true);
+    this.drawPixelText(cx, cy - 4, `${this.finalScore.home}-${this.finalScore.away}`, 0x000000, true);
 
     // Opciones
     this.options = [
@@ -90,16 +90,17 @@ export default class FullTimeScene extends Phaser.Scene {
 
     this.options.forEach((opt, i) => {
       const isSelected = i === this.selectedIndex;
-      const label = isSelected ? ` ${opt.text} ` : opt.text;
-      const color = isSelected ? 0xffffff : 0x00aa00;
+      
+      if (isSelected) {
+        // Fondo de selección
+        const rect = this.add.rectangle(cx, cy + 12 + i * 12, 60, 9, 0x000000, 0.1);
+        this.optionContainers.push(rect);
+      }
+
+      const color = isSelected ? 0x000000 : 0x888888;
+      const label = opt.text;
       
       const container = this.drawPixelText(cx, cy + 12 + i * 12, label, color, true);
-      
-      // Añadir corchetes decorativos si está seleccionado
-      if (isSelected) {
-        // Los corchetes ya van en el texto si quisiéramos, pero vamos a usar guiones o simplemente color
-      }
-      
       this.optionContainers.push(container);
     });
   }

@@ -42,6 +42,9 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     this.audioManager = new AudioManager(this);
     this.audioManager.preload();
+    
+    // Carga del logo del menú (debe estar en la carpeta public/)
+    this.load.image('menu_logo', '/menu_logo.png');
   }
 
   create() {
