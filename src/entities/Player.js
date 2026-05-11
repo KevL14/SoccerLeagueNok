@@ -10,6 +10,9 @@ import Phaser from 'phaser';
 import { FIELD } from '../config/fieldConstants.js';
 
 const KICK_COOLDOWN_MS = 320;
+const MAX_SPEED      = 45;   
+const KICK_SCALE     = 60;   
+const DRAG           = 180;
 
 export default class Player {
   constructor(scene, x, y, team, playerNumber = 1, texture) {
@@ -17,20 +20,20 @@ export default class Player {
     this.team         = team;
     this.playerNumber = playerNumber;
 
-    const tex = texture || (team === 'home' ? 'team_home' : 'team_away');
-    this.sprite = scene.add.sprite(x, y, tex);
+    this.baseTexture = texture || (team === 'home' ? 'team_home' : 'team_away');
+    this.sprite = scene.add.sprite(x, y, `${this.baseTexture}_front_0`);
     this.sprite.setDepth(4);
     scene.physics.world.enable(this.sprite);
 
     // Cuerpo físico: parte central del sprite 6×10
-    this.sprite.body.setSize(5, 7);
-    this.sprite.body.setOffset(0, 2);
+    this.sprite.body.setSize(4, 6);
+    this.sprite.body.setOffset(1, 3);
     this.sprite.body.setCollideWorldBounds(false);
     this.sprite.body.setBounce(0);
-    this.sprite.body.setDrag(200);
-    this.sprite.body.setMaxSpeed(55);
+    this.sprite.body.setDrag(DRAG);
+    this.sprite.body.setMaxSpeed(MAX_SPEED);
 
-    this.speed  = 35;   // Reducido para ritmo Nokia auténtico (antes 45)
+    this.speed  = 28;   // Aún más lento para control total (antes 35)
     this.hasBall       = false;
     this._kickCooldown  = 0;
     this._catchCooldown = 0;
@@ -93,7 +96,7 @@ export default class Player {
     if (this.isFallen || this.isTackling || this.hasBall) return;
     this.isTackling = true;
     const len = Math.hypot(dx, dy) || 1;
-    this.sprite.body.setVelocity((dx / len) * 70, (dy / len) * 70);
+    this.sprite.body.setVelocity((dx / len) * KICK_SCALE, (dy / len) * KICK_SCALE);
     this.sprite.setTint(0xffaaaa);
     this.scene.time.delayedCall(80, () => {
       if (!this.sprite?.body) return;
@@ -141,11 +144,29 @@ export default class Player {
     // Animación de caminata Nokia: leve oscilación y rebote
     const velocity = this.sprite.body.velocity;
     const speed = Math.hypot(velocity.x, velocity.y);
-    if (speed > 3) {
+    
+    // ─── Gestión de Textura Direccional y Animación ──────────────────────────
+    if (speed > 1) {
       this._walkTimer += delta;
+      const frame = (Math.floor(this._walkTimer / 120) % 2); // 120ms por frame
+      let view = 'front';
+
+      if (Math.abs(velocity.x) > Math.abs(velocity.y) * 1.2) {
+        view = 'side';
+        this.sprite.setFlipX(velocity.x < 0);
+      } else if (velocity.y > 0) {
+        view = 'front';
+        this.sprite.setFlipX(false);
+      } else {
+        view = 'back';
+        this.sprite.setFlipX(false);
+      }
+
+      this.sprite.setTexture(`${this.baseTexture}_${view}_${frame}`);
+
       // Rotación lateral
       this.sprite.setAngle(Math.sin(this._walkTimer * 0.02) * 12);
-      // Rebote vertical sutil (Nokia premium style)
+      // Rebote vertical sutil
       const bob = Math.abs(Math.sin(this._walkTimer * 0.02)) * 0.15;
       this.sprite.setScale(1, 1 - bob);
     } else {
@@ -153,6 +174,7 @@ export default class Player {
       this.sprite.setAngle(Math.abs(cur) > 0.5 ? cur * 0.6 : 0);
       this.sprite.setScale(1, 1);
       this._walkTimer = 0;
+      this.sprite.setTexture(`${this.baseTexture}_front_0`);
     }
   }
 

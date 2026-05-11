@@ -1,33 +1,29 @@
 /**
- * src/ui/HUB.js
+ * src/scenes/UIScene.js
  *
- * Interfaz de usuario para el Nokia Soccer League.
- * Rediseñado para mayor legibilidad (LCD retro pero nítido).
+ * Escena separada para la interfaz de usuario (HUD).
+ * Al ser una escena independiente, no le afecta el scroll ni el jitter
+ * de la cámara principal de MatchScene.
  */
 
 import Phaser from 'phaser';
 
-export default class HUD {
-  constructor(scene) {
-    this.scene = scene;
-    this.scoreText = null;
-    this.timerText = null;
+export default class UIScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'UIScene' });
+    this.scoreContainer = null;
+    this.timerContainer = null;
     this.possessionIndicator = null;
-    this.announcementText = null;
+    this.announcementContainer = null;
     this.announcementBg = null;
+    this.lastScoreText = '';
+    this.lastTimeText  = '';
   }
 
   create() {
     // Fondo de la barra superior (LCD retro oscuro)
-    const bar = this.scene.add.rectangle(40, 6, 80, 12, 0x1a2a08, 0.85);
-    bar.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(30);
-
-    const textStyle = {
-      fontFamily: '"Courier New", monospace',
-      fontSize:   '7px',
-      color:      '#4dff4d',
-      fontStyle:  'bold',
-    };
+    const bar = this.add.rectangle(40, 6, 80, 12, 0x1a2a08, 0.85);
+    bar.setOrigin(0.5, 0.5).setDepth(30);
 
     // ─── Posesión (izquierda)
     this.possessionIndicator = this.drawPixelText(4, 6, '>', 0x4dff4d);
@@ -38,34 +34,42 @@ export default class HUD {
     // ─── Timer (derecha)
     this.timerContainer = this.drawPixelText(76, 6, '00:00', 0x4dff4d, false, true);
 
-    // ─── Anuncios (Press X, GOAL, etc) ─────────────────────────────────────────
-    this.announcementBg = this.scene.add.rectangle(40, 65, 76, 10, 0x000000, 0.85);
-    this.announcementBg.setOrigin(0.5).setScrollFactor(0).setDepth(40).setVisible(false);
+    // ─── Anuncios ─────────────────────────────────────────────────────────────
+    this.announcementBg = this.add.rectangle(40, 65, 76, 10, 0x000000, 0.85);
+    this.announcementBg.setOrigin(0.5).setDepth(40).setVisible(false);
     this.announcementBg.setStrokeStyle(1, 0x4dff4d, 0.4);
 
-    this.announcementContainer = this.scene.add.container(40, 65).setScrollFactor(0).setDepth(41).setVisible(false);
+    this.announcementContainer = this.add.container(40, 65).setDepth(41).setVisible(false);
 
-    this.lastScoreText = '';
-    this.lastTimeText  = '';
+    // Escuchar eventos desde MatchScene
+    const match = this.scene.get('MatchScene');
+    match.events.on('updateScore', this.updateScore, this);
+    match.events.on('updateTimer', this.updateTimer, this);
+    match.events.on('updatePossession', this.updatePossession, this);
+    match.events.on('showAnnouncement', this.showAnnouncement, this);
+    match.events.on('hideAnnouncement', this.hideAnnouncement, this);
+
+    this.events.on('shutdown', () => {
+      match.events.off('updateScore');
+      match.events.off('updateTimer');
+      match.events.off('updatePossession');
+      match.events.off('showAnnouncement');
+      match.events.off('hideAnnouncement');
+    });
   }
 
-  /**
-   * Dibuja texto usando las texturas de píxeles individuales (3x5).
-   */
   drawPixelText(x, y, text, color, centered = false, rightAligned = false) {
-    const container = this.scene.add.container(x, y).setScrollFactor(0).setDepth(32);
+    const container = this.add.container(x, y).setDepth(32);
     const chars = text.toUpperCase().split('');
-    const charW = 4; // 3px + 1px espacio fijo
+    const charW = 4;
     
-    // Calculamos el ancho total basándonos en charW fijo para evitar saltos de 0.5px
     let totalW = chars.length * charW;
     let startX = centered ? -Math.floor(totalW / 2) : (rightAligned ? -totalW : 0);
 
     chars.forEach((char, i) => {
       const key = `font_${char}`;
-      if (this.scene.textures.exists(key)) {
-        // Posicionamiento absoluto de píxeles
-        const s = this.scene.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
+      if (this.textures.exists(key)) {
+        const s = this.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
         s.setTint(color);
         container.add(s);
       }
@@ -77,7 +81,6 @@ export default class HUD {
     const newText = `${home}-${away}`;
     if (newText === this.lastScoreText) return;
     this.lastScoreText = newText;
-
     if (this.scoreContainer) this.scoreContainer.destroy();
     this.scoreContainer = this.drawPixelText(40, 6, newText, 0xffffff, true);
   }
@@ -87,10 +90,8 @@ export default class HUD {
     const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
     const s = (totalSeconds % 60).toString().padStart(2, '0');
     const newText = `${m}:${s}`;
-
     if (newText === this.lastTimeText) return;
     this.lastTimeText = newText;
-
     if (this.timerContainer) this.timerContainer.destroy();
     this.timerContainer = this.drawPixelText(76, 6, newText, 0x4dff4d, false, true);
   }
@@ -101,42 +102,30 @@ export default class HUD {
     this.possessionIndicator = this.drawPixelText(team === 'home' ? 4 : 72, 6, team === 'home' ? '>' : '<', 0x4dff4d);
   }
 
-  showAnnouncement(text, duration = 0) {
+  showAnnouncement(data) {
+    const text = typeof data === 'string' ? data : data.text;
     if (!this.announcementContainer) return;
     this.announcementContainer.removeAll(true);
     
-    // Generar el nuevo texto pixelado dentro del contenedor
     const chars = text.toUpperCase().split('');
     const charW = 4;
-    let totalW = chars.length * charW - 1;
-    let startX = Math.floor(-totalW / 2);
+    let totalW = chars.length * charW;
+    let startX = -Math.floor(totalW / 2);
 
     chars.forEach((char, i) => {
       const key = `font_${char}`;
-      if (this.scene.textures.exists(key)) {
-        const s = this.scene.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
+      if (this.textures.exists(key)) {
+        const s = this.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
         this.announcementContainer.add(s);
       }
     });
 
     this.announcementContainer.setVisible(true);
     this.announcementBg.setVisible(true);
-
-    if (duration > 0) {
-      this.scene.time.delayedCall(duration, () => this.hideAnnouncement());
-    }
   }
 
   hideAnnouncement() {
     this.announcementContainer?.setVisible(false);
     this.announcementBg?.setVisible(false);
-  }
-
-  destroy() {
-    this.scoreContainer?.destroy();
-    this.timerContainer?.destroy();
-    this.possessionIndicator?.destroy();
-    this.announcementContainer?.destroy();
-    this.announcementBg?.destroy();
   }
 }

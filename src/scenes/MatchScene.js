@@ -10,7 +10,6 @@ import Phaser from 'phaser';
 import InputSystem from '../systems/InputSystem.js';
 import AISystem    from '../systems/AISystem.js';
 import ScoreSystem from '../systems/ScoreSystem.js';
-import HUD         from '../ui/HUB.js';
 import Ball        from '../entities/Ball.js';
 import Player      from '../entities/Player.js';
 import GoalKeeper  from '../entities/GoalKeeper.js';
@@ -27,7 +26,6 @@ export default class MatchScene extends Phaser.Scene {
     this.inputSystem = null;
     this.aiSystem    = null;
     this.scoreSystem = null;
-    this.hud         = null;
 
     this.matchStarted        = false;
     this.matchPaused         = false;
@@ -53,14 +51,11 @@ export default class MatchScene extends Phaser.Scene {
     this.ball = new Ball(this, FIELD.X, FIELD.CY);
     this._createTeams();
 
-    this.hud = new HUD(this);
-    this.hud.create();
-    this.hud.updateScore(0, 0);
-    this.hud.updateTimer(0);
+    this.scene.launch('UIScene');
 
     this.inputSystem = new InputSystem(this);
     this.aiSystem    = new AISystem(this);
-    this.scoreSystem = new ScoreSystem(this, this.hud);
+    this.scoreSystem = new ScoreSystem(this);
 
     this.inputSystem.setup(this.homeTeam, this.awayTeam, this.ball);
     this.aiSystem.setup(this.awayTeam, this.homeTeam, this.ball);
@@ -83,8 +78,6 @@ export default class MatchScene extends Phaser.Scene {
       0.08    // lerp Y
     );
 
-    // HUD fijo a la cámara (scrollFactor=0 ya lo maneja el HUD)
-    
     // Dianas de tiro oscilantes en las porterías
     this.targetDotBot = this.add.rectangle(FIELD.X, FIELD.BOTTOM, 4, 2, 0xff2200).setDepth(20);
     this.targetDotTop = this.add.rectangle(FIELD.X, FIELD.TOP, 4, 2, 0xff2200).setDepth(20);
@@ -298,7 +291,7 @@ export default class MatchScene extends Phaser.Scene {
     players[7].sprite.setPosition(FIELD.X - 5, FIELD.CY);
     players[8].sprite.setPosition(FIELD.X + 5, FIELD.CY);
 
-    this.hud.showAnnouncement('PRESS X TO START');
+    this.events.emit('showAnnouncement', 'PRESS X TO START');
   }
 
   _executeKickoff() {
@@ -402,7 +395,7 @@ export default class MatchScene extends Phaser.Scene {
     this.ballOwner            = player;
     this.lastPossessionChange = this.time.now;
     player.setBallPossession(true);
-    this.hud.updatePossession(player.team);
+    this.events.emit('updatePossession', player.team);
 
     if (player.team === 'home') {
       const idx = this.homeTeam.getAllPlayers().indexOf(player);
@@ -489,7 +482,7 @@ export default class MatchScene extends Phaser.Scene {
     this.isScoring = false;
 
     this.isWaitingForKickoff = true;
-    this.hud.showAnnouncement('PRESS X TO START');
+    this.events.emit('showAnnouncement', 'PRESS X TO START');
   }
 
   // ─── Pausa ───────────────────────────────────────────────────────────────────
@@ -510,15 +503,15 @@ export default class MatchScene extends Phaser.Scene {
     if (this.isWaitingForKickoff) {
       if (this.inputSystem.isJustPressed('pass')) {
         this.isWaitingForKickoff = false;
-        this.hud.hideAnnouncement();
+        this.events.emit('hideAnnouncement');
         this._executeKickoff();
       }
       return;
     }
 
-    if (!this.hud || !this.inputSystem || !this.aiSystem || !this.ball) return;
+    if (!this.inputSystem || !this.aiSystem || !this.ball) return;
 
-    this.hud.updateTimer(time);
+    this.events.emit('updateTimer', time);
     this.inputSystem.update();
     this.aiSystem.update(delta);
     this.ball.update();

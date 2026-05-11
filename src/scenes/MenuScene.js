@@ -24,23 +24,11 @@ export default class MenuScene extends Phaser.Scene {
     }
 
     // Título
-    this.add.text(cx, cy - 22, 'SOCCER', {
-      fontFamily: 'monospace', fontSize: '11px', color: '#4dff4d',
-    }).setOrigin(0.5);
-
-    this.add.text(cx, cy - 10, 'LEAGUE', {
-      fontFamily: 'monospace', fontSize: '11px', color: '#4dff4d',
-    }).setOrigin(0.5);
+    this.drawPixelText(cx, cy - 22, 'SOCCER', 0x4dff4d, true);
+    this.drawPixelText(cx, cy - 10, 'LEAGUE', 0x4dff4d, true);
 
     // Prompt parpadeante
-    const prompt = this.add.text(cx, cy + 12, 'PRESS ENTER', {
-      fontFamily: 'Verdana, Arial, sans-serif',
-      fontSize:   '6px',
-      color:      '#ffffff',
-      fontStyle:  'bold',
-      stroke:     '#000000',
-      strokeThickness: 1
-    }).setOrigin(0.5);
+    const prompt = this.drawPixelText(cx, cy + 12, 'PRESS ENTER', 0xffffff, true);
 
     this.tweens.add({
       targets: prompt,
@@ -51,20 +39,34 @@ export default class MenuScene extends Phaser.Scene {
       repeat:  -1,
     });
 
-    // Nokia label
-    this.add.text(cx, cy + 30, 'NOKIA 1600', {
-      fontFamily: 'monospace', fontSize: '4px', color: '#1a5a1a',
-    }).setOrigin(0.5);
-
-    // Controls help
-    this.add.text(cx, cy + 38, 'ARROWS:move  X:pass  SPC:shoot', {
-      fontFamily: 'monospace', fontSize: '3px', color: '#1a5a1a',
-    }).setOrigin(0.5);
-
     this.input.keyboard.once('keydown-ENTER', () => {
       const am = this.registry.get('audioManager');
       if (am) am.stop('menu');
       this.scene.start('MatchScene');
     });
+
+    // Etiquetas decorativas
+    this.drawPixelText(cx, cy + 30, 'NOKIA 1600', 0x1a5a1a, true);
+    this.add.text(cx, cy + 38, 'X:PASS  SPC:SHOOT', {
+      fontFamily: 'monospace', fontSize: '3px', color: '#1a5a1a',
+    }).setOrigin(0.5);
+  }
+
+  drawPixelText(x, y, text, color, centered = false) {
+    const container = this.add.container(x, y).setDepth(32);
+    const chars = text.toUpperCase().split('');
+    const charW = 4;
+    let totalW = chars.length * charW;
+    let startX = centered ? -Math.floor(totalW / 2) : 0;
+
+    chars.forEach((char, i) => {
+      const key = `font_${char}`;
+      if (this.textures.exists(key)) {
+        const s = this.add.sprite(startX + i * charW, 0, key).setOrigin(0, 0.5);
+        s.setTint(color);
+        container.add(s);
+      }
+    });
+    return container;
   }
 }

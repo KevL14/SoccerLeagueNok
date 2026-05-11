@@ -14,8 +14,8 @@ export default class GoalKeeper {
     this.team   = team;
     this.fixedY = goalY;
 
-    const tex = texture || (team === 'home' ? 'gk_home' : 'gk_away');
-    this.sprite = scene.add.sprite(x, y, tex);
+    this.baseTexture = texture || (team === 'home' ? 'gk_home' : 'gk_away');
+    this.sprite = scene.add.sprite(x, y, `${this.baseTexture}_side_0`);
     this.sprite.setDepth(4);
     scene.physics.world.enable(this.sprite);
 
@@ -57,6 +57,19 @@ export default class GoalKeeper {
     const dx  = this._targetX - this.sprite.x;
     const vel = Phaser.Math.Clamp(dx * 6, -this.speed, this.speed);
     this.sprite.body.setVelocityX(Math.abs(dx) > 1 ? vel : 0);
+
+    // Dirección visual y animación dinámica
+    const currentVelX = this.sprite.body.velocity.x;
+    if (Math.abs(currentVelX) > 5) {
+      const frame = (Math.floor(this.scene.time.now / 120) % 2);
+      this.sprite.setTexture(`${this.baseTexture}_side_${frame}`);
+      this.sprite.setFlipX(currentVelX < 0);
+    } else {
+      // Mirar al frente cuando la velocidad es nula o muy baja
+      this.sprite.setTexture(`${this.baseTexture}_front_0`);
+      this.sprite.setFlipX(false);
+    }
+
     this._clamp();
   }
 

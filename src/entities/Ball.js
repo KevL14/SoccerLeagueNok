@@ -10,9 +10,9 @@ import Phaser from 'phaser';
 import { FIELD } from '../config/fieldConstants.js';
 
 const STOP_THRESHOLD = 3;
-const MAX_SPEED      = 110;   
-const KICK_SCALE     = 85;   
-const DRAG           = 35;
+const MAX_SPEED      = 95;   
+const KICK_SCALE     = 70;   
+const DRAG           = 32;
 const WALL_BOUNCE    = 0.6;
 
 const HALF_GOAL = FIELD.GOAL_W / 2;
