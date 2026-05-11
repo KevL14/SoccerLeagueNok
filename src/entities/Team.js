@@ -16,27 +16,27 @@ const calcFormation = (isHome, isOffensive) => {
   const CY   = FIELD.CY;
   const sign = isHome ? 1 : -1;
 
-  // Fase defensiva: todos en su mitad
-  const DEF_Y = isHome ? FIELD.TOP  + 24 : FIELD.BOTTOM - 24;
-  const MID_Y = CY + sign * (-28);
-  const FWD_Y = CY + sign * (-10);
+  // Fase defensiva (Saque inicial o repliegue): todos estrictamente en su mitad
+  const DEF_Y = isHome ? FIELD.TOP  + 30 : FIELD.BOTTOM - 30;
+  const MID_Y = CY + sign * (-40); // Mitad de su propio campo
+  const FWD_Y = CY + sign * (-10); // Justo detrás de la línea de medio campo
 
-  // Fase ofensiva: 4-3-3 proyectado
-  const DEF_Y_O = isHome ? FIELD.TOP  + 18 : FIELD.BOTTOM - 18;
-  const MID_Y_O = CY + sign * 14;
-  const FWD_Y_O = isHome ? FIELD.BOTTOM - 24 : FIELD.TOP  + 24;
+  // Fase ofensiva: 4-3-3 proyectado ocupando todo el campo
+  const DEF_Y_O = CY + sign * (-30); // Defensas suben casi a medio campo
+  const MID_Y_O = CY + sign * 25;    // Medios suben a apoyar al campo rival
+  const FWD_Y_O = isHome ? FIELD.BOTTOM - 35 : FIELD.TOP  + 35; // Delanteros cerca del área rival
 
   const defY = isOffensive ? DEF_Y_O : DEF_Y;
   const midY = isOffensive ? MID_Y_O : MID_Y;
   const fwdY = isOffensive ? FWD_Y_O : FWD_Y;
 
   return [
-    // 4 Defensas
-    { x: 30, y: defY }, { x: 50, y: defY }, { x: 70, y: defY }, { x: 90, y: defY },
+    // 4 Defensas (ocupan todo el ancho)
+    { x: 15, y: defY }, { x: 45, y: defY }, { x: 75, y: defY }, { x: 105, y: defY },
     // 3 Mediocampistas
-    { x: 35, y: midY }, { x: 60, y: midY }, { x: 85, y: midY },
+    { x: 25, y: midY }, { x: 60, y: midY }, { x: 95, y: midY },
     // 3 Delanteros
-    { x: 35, y: fwdY }, { x: 60, y: fwdY }, { x: 85, y: fwdY },
+    { x: 25, y: fwdY }, { x: 60, y: fwdY }, { x: 95, y: fwdY },
   ];
 };
 

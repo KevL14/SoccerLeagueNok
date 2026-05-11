@@ -386,7 +386,7 @@ export default class AISystem {
     const role   = this._getRole(index);
     const h      = FIELD.BOTTOM - FIELD.TOP;
     const z      = h / 3;
-    const margin = 18;
+    const margin = 35; // Ampliado para mayor rango de activación
 
     if (attackingDown) {
       if (role === 'defender')   return ballPos.y < FIELD.TOP + z + margin;
@@ -452,8 +452,8 @@ export default class AISystem {
       const mPos   = mate.getPosition();
       const dToP   = Math.hypot(mPos.x - pos.x, mPos.y - pos.y);
 
-      // Rango de pase: 10–75px
-      if (dToP > 75 || dToP < 10) continue;
+      // Rango de pase: 10–110px (pases más largos permitidos)
+      if (dToP > 110 || dToP < 10) continue;
 
       // Penalización si hay rivales cerca del compañero (evitar pasar al rival)
       let opponentNear = false;
@@ -461,12 +461,12 @@ export default class AISystem {
       const opponents = opponentTeam.getAllPlayers();
       for (const opp of opponents) {
         const dToOpp = Math.hypot(mPos.x - opp.sprite.x, mPos.y - opp.sprite.y);
-        if (dToOpp < 18) { opponentNear = true; break; }
+        if (dToOpp < 12) { opponentNear = true; break; } // Reducido para permitir más pases
       }
       if (opponentNear) continue;
 
       const dToGoal  = Math.abs(goalY - mPos.y);
-      const forward  = (attackingDown ? mPos.y > pos.y : mPos.y < pos.y) ? 120 : 0;
+      const forward  = (attackingDown ? mPos.y > pos.y : mPos.y < pos.y) ? 200 : 0; // Bonificación agresiva para pases hacia adelante
       const score    = forward - dToGoal * 0.8 - dToP * 0.3;
 
       if (score > bestScore) { bestScore = score; best = mate; }
