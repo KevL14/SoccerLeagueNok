@@ -80,7 +80,7 @@ export default class GoalScene extends Phaser.Scene {
     this.tweens.killAll();
 
     const matchScene = this.scene.get('MatchScene');
-    matchScene?.resetMatch?.();
+    matchScene?.resetMatch?.(this.goalData.team);
 
     this.scene.stop('GoalScene');
     this.scene.resume('MatchScene');

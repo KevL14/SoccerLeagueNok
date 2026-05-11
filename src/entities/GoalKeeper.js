@@ -25,7 +25,7 @@ export default class GoalKeeper {
     this.sprite.body.setBounce(0);
     this.sprite.body.setDrag(500);
 
-    this.speed = 55;
+    this.speed = 42;    // Reducido (antes 55)
 
     const halfW = FIELD.GOAL_W / 2;
     this.minX   = FIELD.X - halfW + 2;

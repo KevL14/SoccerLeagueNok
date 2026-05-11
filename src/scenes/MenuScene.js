@@ -9,16 +9,16 @@ export default class MenuScene extends Phaser.Scene {
   constructor() { super({ key: 'MenuScene' }); }
 
   create() {
-    const cx = 30, cy = 42;
+    const cx = 40, cy = 40;
 
     // Fondo LCD Nokia
-    this.add.rectangle(cx, cy, 60, 85, 0x1a2a08);
+    this.add.rectangle(cx, cy, 80, 80, 0x1a2a08);
 
     // Puntos LCD
     const dots = this.add.graphics();
     dots.fillStyle(0x000000, 0.1);
-    for (let x = 0; x < 60; x += 2) {
-      for (let y = 0; y < 85; y += 2) {
+    for (let x = 0; x < 80; x += 2) {
+      for (let y = 0; y < 80; y += 2) {
         dots.fillRect(x, y, 1, 1);
       }
     }
@@ -33,13 +33,22 @@ export default class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Prompt parpadeante
-    const prompt = this.add.text(cx, cy + 10, 'PRESS ENTER', {
-      fontFamily: 'monospace', fontSize: '5px', color: '#33cc33',
+    const prompt = this.add.text(cx, cy + 12, 'PRESS ENTER', {
+      fontFamily: 'Verdana, Arial, sans-serif',
+      fontSize:   '6px',
+      color:      '#ffffff',
+      fontStyle:  'bold',
+      stroke:     '#000000',
+      strokeThickness: 1
     }).setOrigin(0.5);
 
     this.tweens.add({
-      targets: prompt, alpha: { from: 1, to: 0.1 },
-      duration: 420, yoyo: true, repeat: -1,
+      targets: prompt,
+      scale:   { from: 1, to: 1.1 },
+      alpha:   { from: 1, to: 0.7 },
+      duration: 600,
+      yoyo:    true,
+      repeat:  -1,
     });
 
     // Nokia label

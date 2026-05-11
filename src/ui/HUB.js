@@ -47,16 +47,18 @@ export default class HUD {
       .setOrigin(1, 0.5).setScrollFactor(0).setDepth(32);
 
     // ─── Anuncios (Press X, GOAL, etc) ─────────────────────────────────────────
-    this.announcementBg = this.scene.add.rectangle(40, 55, 60, 15, 0x000000, 0.7);
+    this.announcementBg = this.scene.add.rectangle(40, 65, 70, 12, 0x000000, 0.85);
     this.announcementBg.setOrigin(0.5).setScrollFactor(0).setDepth(40).setVisible(false);
+    this.announcementBg.setStrokeStyle(1, 0x4dff4d, 0.5);
 
-    this.announcementText = this.scene.add.text(40, 55, '', {
+    this.announcementText = this.scene.add.text(40, 65, '', {
       fontFamily: 'Verdana, Arial, sans-serif',
       fontSize:   '6px',
-      color:      '#ffff00',
+      color:      '#ffffff',
       fontStyle:  'bold',
       align:      'center',
-      stroke:     '#000000',
+      letterSpacing: 1,
+      stroke:     '#1a2a08',
       strokeThickness: 2
     }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(false);
   }

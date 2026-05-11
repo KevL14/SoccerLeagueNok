@@ -30,7 +30,7 @@ export default class Player {
     this.sprite.body.setDrag(200);
     this.sprite.body.setMaxSpeed(55);
 
-    this.speed  = 45;   // reducido (era 58) — más Nokia
+    this.speed  = 35;   // Reducido para ritmo Nokia auténtico (antes 45)
     this.hasBall       = false;
     this._kickCooldown  = 0;
     this._catchCooldown = 0;
@@ -135,16 +135,23 @@ export default class Player {
     if (this.isFallen) return;
 
     // Clampear dentro del campo activo
+    this.sprite.x = Phaser.Math.Clamp(this.sprite.x, FIELD.LEFT, FIELD.RIGHT);
+    this.sprite.y = Phaser.Math.Clamp(this.sprite.y, FIELD.TOP, FIELD.BOTTOM);
 
-
-    // Animación de caminata Nokia: leve oscilación
-    const speed = Math.hypot(this.sprite.body.velocity.x, this.sprite.body.velocity.y);
+    // Animación de caminata Nokia: leve oscilación y rebote
+    const velocity = this.sprite.body.velocity;
+    const speed = Math.hypot(velocity.x, velocity.y);
     if (speed > 3) {
       this._walkTimer += delta;
-      this.sprite.setAngle(Math.sin(this._walkTimer * 0.018) * 9);
+      // Rotación lateral
+      this.sprite.setAngle(Math.sin(this._walkTimer * 0.02) * 12);
+      // Rebote vertical sutil (Nokia premium style)
+      const bob = Math.abs(Math.sin(this._walkTimer * 0.02)) * 0.15;
+      this.sprite.setScale(1, 1 - bob);
     } else {
       const cur = this.sprite.angle;
       this.sprite.setAngle(Math.abs(cur) > 0.5 ? cur * 0.6 : 0);
+      this.sprite.setScale(1, 1);
       this._walkTimer = 0;
     }
   }

@@ -32,11 +32,11 @@ const calcFormation = (isHome, isOffensive) => {
 
   return [
     // 4 Defensas
-    { x:  8, y: defY }, { x: 22, y: defY }, { x: 38, y: defY }, { x: 52, y: defY },
+    { x: 26, y: defY }, { x: 42, y: defY }, { x: 58, y: defY }, { x: 74, y: defY },
     // 3 Mediocampistas
-    { x: 12, y: midY }, { x: 30, y: midY }, { x: 48, y: midY },
+    { x: 28, y: midY }, { x: 50, y: midY }, { x: 72, y: midY },
     // 3 Delanteros
-    { x: 12, y: fwdY }, { x: 30, y: fwdY }, { x: 48, y: fwdY },
+    { x: 28, y: fwdY }, { x: 50, y: fwdY }, { x: 72, y: fwdY },
   ];
 };
 

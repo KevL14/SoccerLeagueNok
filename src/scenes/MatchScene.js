@@ -85,17 +85,20 @@ export default class MatchScene extends Phaser.Scene {
 
     // HUD fijo a la cámara (scrollFactor=0 ya lo maneja el HUD)
     
-    // Diana de tiro oscilante en portería AWAY
-    this.targetDot = this.add.rectangle(FIELD.X, FIELD.GOAL_BOT - 2, 4, 2, 0xff2200);
-    this.targetDot.setDepth(20);
-    this.tweens.add({
-      targets:  this.targetDot,
+    // Dianas de tiro oscilantes en las porterías
+    this.targetDotBot = this.add.rectangle(FIELD.X, FIELD.BOTTOM, 4, 2, 0xff2200).setDepth(20);
+    this.targetDotTop = this.add.rectangle(FIELD.X, FIELD.TOP, 4, 2, 0xff2200).setDepth(20);
+
+    const tweenConfig = {
       x:        { from: FIELD.X - FIELD.GOAL_W / 2 + 3, to: FIELD.X + FIELD.GOAL_W / 2 - 3 },
       duration: 700,
       yoyo:     true,
       repeat:   -1,
       ease:     'Sine.easeInOut',
-    });
+    };
+
+    this.tweens.add({ targets: this.targetDotBot, ...tweenConfig });
+    this.tweens.add({ targets: this.targetDotTop, ...tweenConfig });
 
     this.events.on('pause',  () => this._onPause());
     this.events.on('resume', () => this._onResume());
@@ -109,17 +112,21 @@ export default class MatchScene extends Phaser.Scene {
   _drawField() {
     const { X, TOP, BOTTOM, LEFT, RIGHT, WIDTH, HEIGHT, CY,
             GOAL_W, GOAL_H, GOAL_TOP, GOAL_BOT,
-            PEN_W, PEN_H, PEN_S_W, PEN_S_H, WORLD_W, WORLD_H } = FIELD;
+            PEN_W, PEN_H, PEN_S_W, PEN_S_H, PEN_ARC, WORLD_W, WORLD_H } = FIELD;
 
     // Fondo total del mundo (césped)
-    this.add.rectangle(X, WORLD_H / 2, WORLD_W, WORLD_H, 0x3d5c1a);
+    this.add.rectangle(X, WORLD_H / 2, WORLD_W, WORLD_H, 0x314a15);
 
     // Margen trasero porterías (verde oscuro)
-    this.add.rectangle(X, (GOAL_TOP + TOP) / 2, WIDTH, TOP - GOAL_TOP, 0x2a4010);
-    this.add.rectangle(X, (GOAL_BOT + BOTTOM) / 2, WIDTH, GOAL_BOT - BOTTOM, 0x2a4010);
+    this.add.rectangle(X, (GOAL_TOP + TOP) / 2, WIDTH, TOP - GOAL_TOP, 0x243810);
+    this.add.rectangle(X, (GOAL_BOT + BOTTOM) / 2, WIDTH, GOAL_BOT - BOTTOM, 0x243810);
 
-    // Campo activo principal
-    this.add.rectangle(X, TOP + HEIGHT / 2, WIDTH, HEIGHT, 0x4a7a20);
+    // Campo activo principal con franjas
+    const stripeH = 22;
+    for (let i = 0; i < HEIGHT / stripeH; i++) {
+      const color = i % 2 === 0 ? 0x4a7a20 : 0x436d1d;
+      this.add.rectangle(X, TOP + i * stripeH + stripeH / 2, WIDTH, stripeH, color);
+    }
 
     // ── Líneas del campo ──────────────────────────────────────────────────────
     const g = this.add.graphics().setDepth(1);
@@ -139,6 +146,41 @@ export default class MatchScene extends Phaser.Scene {
     g.strokeRect(X - PEN_W / 2, BOTTOM - PEN_H, PEN_W, PEN_H);
     g.strokeRect(X - PEN_S_W / 2, BOTTOM - PEN_S_H, PEN_S_W, PEN_S_H);
 
+    // Puntos de penal
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(X - 0.5, TOP + PEN_H - 10, 1, 1);
+    g.fillRect(X - 0.5, BOTTOM - PEN_H + 10, 1, 1);
+
+    // Medias lunas (más prominentes)
+    const arcR = 15;
+    g.beginPath();
+    g.arc(X, TOP + PEN_H - 10, arcR, 0.85, Math.PI - 0.85, false);
+    g.strokePath();
+    g.beginPath();
+    g.arc(X, BOTTOM - PEN_H + 10, arcR, Math.PI + 0.85, -0.85, false);
+    g.strokePath();
+
+    // Esquinas y Banderines
+    const corR = 5;
+    const flagColor = 0xff0000;
+    
+    // Arcos de esquina
+    g.lineStyle(1, 0xffffff, 0.8);
+    g.beginPath(); g.arc(LEFT,  TOP,    corR, 0, Math.PI / 2, false); g.strokePath();
+    g.beginPath(); g.arc(RIGHT, TOP,    corR, Math.PI / 2, Math.PI, false); g.strokePath();
+    g.beginPath(); g.arc(LEFT,  BOTTOM, corR, Math.PI * 1.5, 0, false); g.strokePath();
+    g.beginPath(); g.arc(RIGHT, BOTTOM, corR, Math.PI, Math.PI * 1.5, false); g.strokePath();
+
+    // Banderines (visual)
+    const drawFlag = (fx, fy) => {
+      this.add.line(0, 0, fx, fy, fx, fy - 4, 0xaaaaaa).setOrigin(0).setDepth(10);
+      this.add.triangle(fx, fy - 4, 0, 0, 0, 3, 3, 1.5, flagColor).setOrigin(0).setDepth(11);
+    };
+    drawFlag(LEFT, TOP);
+    drawFlag(RIGHT, TOP);
+    drawFlag(LEFT, BOTTOM);
+    drawFlag(RIGHT, BOTTOM);
+
     // ── Porterías ─────────────────────────────────────────────────────────────
     this._drawGoal(X, TOP,    GOAL_W, GOAL_H, true);
     this._drawGoal(X, BOTTOM, GOAL_W, GOAL_H, false);
@@ -149,14 +191,20 @@ export default class MatchScene extends Phaser.Scene {
     const dir = isTop ? -1 : 1;
     const g   = this.add.graphics().setDepth(2);
 
-    // Sombra interior de la red
-    g.fillStyle(0x000000, 0.35);
-    g.fillRect(x - hW, y + (isTop ? -h : 0), w, h);
+    // Sombra interior de la red (media malla)
+    const gap = 3; 
+    g.fillStyle(0x000000, 0.4);
+    if (isTop) {
+      g.fillRect(x - hW, y - h, w, h - gap);
+    } else {
+      g.fillRect(x - hW, y + gap, w, h - gap);
+    }
 
-    // Líneas de red
-    g.lineStyle(1, 0x7ab84d, 0.35);
-    for (let i = 1; i < h; i++) {
-      g.lineBetween(x - hW, y + dir * i, x + hW, y + dir * i);
+    // Líneas de red (gris pálido)
+    g.lineStyle(1, 0xcccccc, 0.2);
+    for (let i = gap + 1; i < h; i++) {
+      const yy = isTop ? y - i : y + i;
+      g.lineBetween(x - hW, yy, x + hW, yy);
     }
 
     // Marco blanco
@@ -414,7 +462,11 @@ export default class MatchScene extends Phaser.Scene {
     }
   }
 
-  resetMatch() {
+  resetMatch(scoringTeam) {
+    if (scoringTeam) {
+      this.kickoffTeam = (scoringTeam === 'home') ? 'away' : 'home';
+    }
+
     this._goalieHoldingBall                   = false;
     this._holdingGoalie                        = null;
     this.homeTeam.goalkeeper.holdingBall       = false;
@@ -427,8 +479,13 @@ export default class MatchScene extends Phaser.Scene {
 
     this.releaseBallPossession();
     this.ball.reset(FIELD.X, FIELD.CY);
+    
+    // Forzar posición defensiva al reiniciar
+    this.homeTeam.setFormation('defensive');
+    this.awayTeam.setFormation('defensive');
     this.homeTeam.resetPositions();
     this.awayTeam.resetPositions();
+    
     this.isScoring = false;
 
     this.isWaitingForKickoff = true;

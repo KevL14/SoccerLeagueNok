@@ -13,8 +13,8 @@ import Phaser from 'phaser';
 export const gameConfig = {
   type:     Phaser.AUTO,
   width:    80,
-  height:   110,
-  zoom:     5,
+  height:   80,
+  zoom:     7,
   pixelArt:    true,
   roundPixels: true,
   antialias:   false,
