@@ -1,14 +1,9 @@
 /**
  * src/scenes/MatchScene.js
  *
- * Escena principal del partido.
- * Canvas vertical: 120 × 160 px (zoom ×4 = 480×640 en pantalla)
- *
- * Layout:
- *   y 0–10   → HUD (marcador / timer)
- *   y 10–160 → Campo (150 px tall)
- *   y 10–16  → Portería HOME (home defiende arriba)
- *   y 154–160→ Portería AWAY (away defiende abajo)
+ * Nokia Soccer League — escena principal.
+ * Mundo: 60×200 px  |  Viewport: 60×85 px  |  Zoom: ×7
+ * La cámara SIGUE la bola verticalmente, igual que el Nokia original.
  */
 
 import Phaser from 'phaser';
@@ -22,78 +17,89 @@ import GoalKeeper  from '../entities/GoalKeeper.js';
 import Team        from '../entities/Team.js';
 import { FIELD }   from '../config/fieldConstants.js';
 
-
 export default class MatchScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'MatchScene' });
-  }
+  constructor() { super({ key: 'MatchScene' }); }
 
   init() {
-    this.homeTeam     = null;
-    this.awayTeam     = null;
-    this.ball         = null;
-    this.inputSystem  = null;
-    this.aiSystem     = null;
-    this.scoreSystem  = null;
-    this.hud          = null;
-    this.matchStarted = false;
-    this.matchPaused  = false;
+    this.homeTeam    = null;
+    this.awayTeam    = null;
+    this.ball        = null;
+    this.inputSystem = null;
+    this.aiSystem    = null;
+    this.scoreSystem = null;
+    this.hud         = null;
 
-    /** @type {Player|null} Jugador que actualmente controla la pelota */
-    this.ballOwner = null;
-    
-    // Guard para evitar múltiples triggers de gol
-    this.isScoring = false;
+    this.matchStarted        = false;
+    this.matchPaused         = false;
+    this.isEntering          = true;
+    this.isWaitingForKickoff = false;
+    this.isKickoff           = false;
+    this.kickoffTeam         = 'home';
+
+    this.ballOwner  = null;
+    this.isScoring  = false;
+
+    this._goalieHoldingBall = false;
+    this._holdingGoalie     = null;
   }
 
   create() {
+    // Detener música de menú
+    const am = this.registry.get('audioManager');
+    if (am) am.stop('menu');
+
     this._drawField();
 
-    // Entidades (centro del campo)
     this.ball = new Ball(this, FIELD.X, FIELD.CY);
     this._createTeams();
 
-    // HUD (arriba)
     this.hud = new HUD(this);
     this.hud.create();
     this.hud.updateScore(0, 0);
     this.hud.updateTimer(0);
 
-    // Sistemas
     this.inputSystem = new InputSystem(this);
     this.aiSystem    = new AISystem(this);
     this.scoreSystem = new ScoreSystem(this, this.hud);
-    
-    this.isKickoff = false; // Se activará tras la entrada
-    this.isEntering = true;
-    this.kickoffTeam = 'home';
-    
+
     this.inputSystem.setup(this.homeTeam, this.awayTeam, this.ball);
     this.aiSystem.setup(this.awayTeam, this.homeTeam, this.ball);
 
+    // Física: el mundo cubre TODA la altura incluyendo porterías
+    this.physics.world.setBounds(
+      FIELD.LEFT, FIELD.GOAL_TOP - 2,
+      FIELD.WIDTH, (FIELD.GOAL_BOT + 2) - (FIELD.GOAL_TOP - 2)
+    );
+
     this._setupCollisions();
-    this._startEntranceAnimation();
+
+    // Cámara sigue la bola — Nokia-style scrolling
+    this.cameras.main.setBounds(0, 0, FIELD.WORLD_W, FIELD.WORLD_H);
+    this.cameras.main.startFollow(
+      this.ball.getSprite(),
+      true,   // round pixels
+      0.08,   // lerp X — lento para no marear
+      0.08    // lerp Y
+    );
+
+    // HUD fijo a la cámara (scrollFactor=0 ya lo maneja el HUD)
+    
+    // Diana de tiro oscilante en portería AWAY
+    this.targetDot = this.add.rectangle(FIELD.X, FIELD.GOAL_BOT - 2, 4, 2, 0xff2200);
+    this.targetDot.setDepth(20);
+    this.tweens.add({
+      targets:  this.targetDot,
+      x:        { from: FIELD.X - FIELD.GOAL_W / 2 + 3, to: FIELD.X + FIELD.GOAL_W / 2 - 3 },
+      duration: 700,
+      yoyo:     true,
+      repeat:   -1,
+      ease:     'Sine.easeInOut',
+    });
 
     this.events.on('pause',  () => this._onPause());
     this.events.on('resume', () => this._onResume());
 
-    // Configurar cámara para hacer scroll
-    this.cameras.main.setBounds(0, 0, 120, FIELD.BOTTOM);
-    this.cameras.main.startFollow(this.ball.getSprite(), true, 0.1, 0.1);
-    this.physics.world.setBounds(0, FIELD.TOP, 120, FIELD.BOTTOM - FIELD.TOP);
-
-    // Diana de tiro (Target Dot) - se mueve en la portería rival (BOTTOM)
-    this.targetDot = this.add.rectangle(FIELD.X, FIELD.BOTTOM - 2, 5, 5, 0xff0000);
-    this.targetDot.setDepth(20);
-    this.tweens.add({
-      targets: this.targetDot,
-      x: { from: FIELD.X - FIELD.GOAL_W / 2 + 3, to: FIELD.X + FIELD.GOAL_W / 2 - 3 },
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-
+    this._startEntranceAnimation();
     this.matchStarted = true;
   }
 
@@ -101,177 +107,129 @@ export default class MatchScene extends Phaser.Scene {
 
   _drawField() {
     const { X, TOP, BOTTOM, LEFT, RIGHT, WIDTH, HEIGHT, CY,
-            GOAL_W, GOAL_H, PEN_W, PEN_H, PEN_S_W, PEN_S_H } = FIELD;
+            GOAL_W, GOAL_H, GOAL_TOP, GOAL_BOT,
+            PEN_W, PEN_H, PEN_S_W, PEN_S_H, WORLD_W, WORLD_H } = FIELD;
 
-    // ── Fondo de campo (Nokia LCD Style) ──────────────────
-    // Base green
-    this.add.rectangle(X, TOP + HEIGHT / 2, WIDTH, HEIGHT, 0x1c6e1c);
-    
-    // Dot matrix grid (simulando pantalla Nokia)
-    const dotG = this.add.graphics();
-    dotG.fillStyle(0x000000, 0.1);
-    for (let x = LEFT; x <= RIGHT; x += 2) {
-      for (let y = TOP; y <= BOTTOM; y += 2) {
-        dotG.fillRect(x, y, 1, 1);
-      }
-    }
+    // Fondo total del mundo (césped)
+    this.add.rectangle(X, WORLD_H / 2, WORLD_W, WORLD_H, 0x3d5c1a);
 
-    // ── Líneas blancas del campo ─────────────────────────────────────────────
-    const lineG = this.add.graphics();
-    lineG.lineStyle(1, 0xffffff, 0.8);
+    // Margen trasero porterías (verde oscuro)
+    this.add.rectangle(X, (GOAL_TOP + TOP) / 2, WIDTH, TOP - GOAL_TOP, 0x2a4010);
+    this.add.rectangle(X, (GOAL_BOT + BOTTOM) / 2, WIDTH, GOAL_BOT - BOTTOM, 0x2a4010);
 
-    // Borde exterior
-    lineG.strokeRect(LEFT, TOP, WIDTH, HEIGHT);
+    // Campo activo principal
+    this.add.rectangle(X, TOP + HEIGHT / 2, WIDTH, HEIGHT, 0x4a7a20);
 
-    // Línea de medio campo
-    lineG.lineBetween(LEFT, CY, RIGHT, CY);
+    // ── Líneas del campo ──────────────────────────────────────────────────────
+    const g = this.add.graphics().setDepth(1);
+    g.lineStyle(1, 0xc8e88a, 0.85);
 
-    // Círculo central
-    lineG.strokeCircle(X, CY, 15);
-    lineG.fillStyle(0xffffff, 0.8);
-    lineG.fillRect(X - 0.5, CY - 0.5, 1, 1); // punto central
+    g.strokeRect(LEFT, TOP, WIDTH, HEIGHT);
+    g.lineBetween(LEFT, CY, RIGHT, CY);
+    g.strokeCircle(X, CY, 9);
 
-    // ── ÁREAS (Penal y Chicas) ────────────────────────────────────────────────
-    // Home (Arriba)
-    lineG.strokeRect(X - PEN_W / 2, TOP, PEN_W, PEN_H);
-    lineG.strokeRect(X - PEN_S_W / 2, TOP, PEN_S_W, PEN_S_H);
-    
-    // Away (Abajo)
-    lineG.strokeRect(X - PEN_W / 2, BOTTOM - PEN_H, PEN_W, PEN_H);
-    lineG.strokeRect(X - PEN_S_W / 2, BOTTOM - PEN_S_H, PEN_S_W, PEN_S_H);
+    // Punto central
+    g.fillStyle(0xc8e88a, 1);
+    g.fillRect(X - 0.5, CY - 0.5, 1, 1);
 
-    // ── PORTERÍAS (Arcos) ───────────────────────────────────────────────────
-    this._drawGoal(X, TOP, GOAL_W, GOAL_H, true);
+    // Áreas penales
+    g.strokeRect(X - PEN_W / 2, TOP, PEN_W, PEN_H);
+    g.strokeRect(X - PEN_S_W / 2, TOP, PEN_S_W, PEN_S_H);
+    g.strokeRect(X - PEN_W / 2, BOTTOM - PEN_H, PEN_W, PEN_H);
+    g.strokeRect(X - PEN_S_W / 2, BOTTOM - PEN_S_H, PEN_S_W, PEN_S_H);
+
+    // ── Porterías ─────────────────────────────────────────────────────────────
+    this._drawGoal(X, TOP,    GOAL_W, GOAL_H, true);
     this._drawGoal(X, BOTTOM, GOAL_W, GOAL_H, false);
-
-    // ── HUD background (banda superior) ─────────────────────────────────────
-    this.add.rectangle(FIELD.X, 5, 120, 10, 0x000000, 0).setStrokeStyle(1, 0x00ff00, 0.8);
   }
 
-  /**
-   * Dibuja una portería con estilo de red horizontal (Nokia).
-   */
   _drawGoal(x, y, w, h, isTop) {
-    const hW = w / 2;
+    const hW  = w / 2;
     const dir = isTop ? -1 : 1;
-    const goalG = this.add.graphics();
-    
-    // Profundidad/Sombra interior
-    this.add.rectangle(x, y + (dir * h) / 2, w, h, 0x000000, 0.3);
+    const g   = this.add.graphics().setDepth(2);
 
-    // Líneas horizontales de la red (Efecto del diseño enviado)
-    goalG.lineStyle(1, 0xffffff, 0.4);
-    for (let i = 2; i < h; i += 3) {
-      goalG.lineBetween(x - hW, y + dir * i, x + hW, y + dir * i);
+    // Sombra interior de la red
+    g.fillStyle(0x000000, 0.35);
+    g.fillRect(x - hW, y + (isTop ? -h : 0), w, h);
+
+    // Líneas de red
+    g.lineStyle(1, 0x7ab84d, 0.35);
+    for (let i = 1; i < h; i++) {
+      g.lineBetween(x - hW, y + dir * i, x + hW, y + dir * i);
     }
 
-    // Marco frontal (Postes y travesaño)
-    goalG.lineStyle(1, 0xffffff, 1);
-    // Postes laterales
-    goalG.lineBetween(x - hW, y, x - hW, y + dir * h);
-    goalG.lineBetween(x + hW, y, x + hW, y + dir * h);
-    // Travesaño trasero
-    goalG.lineBetween(x - hW, y + dir * h, x + hW, y + dir * h);
-    
-    // Destellos en los postes delanteros (esquinas con el campo)
-    this.add.circle(x - hW, y, 1.2, 0xffffff);
-    this.add.circle(x + hW, y, 1.2, 0xffffff);
-  }
+    // Marco blanco
+    g.lineStyle(1, 0xffffff, 1);
+    g.lineBetween(x - hW, y, x - hW, y + dir * h);
+    g.lineBetween(x + hW, y, x + hW, y + dir * h);
+    g.lineBetween(x - hW, y + dir * h, x + hW, y + dir * h);
 
-  _resetToKickoff(team) {
-    this.isKickoff = true;
-    this.kickoffTeam = team;
-    this.releaseBallPossession();
-    this.homeTeam.resetPositions();
-    this.awayTeam.resetPositions();
-    this.ball.reset(FIELD.X, FIELD.CY);
-    
-    // Colocar al jugador del saque en el centro
-    const kTeam = team === 'home' ? this.homeTeam : this.awayTeam;
-    const players = kTeam.getAllPlayers();
-    const p = players[players.length - 1]; // Usar el último (delantero)
-    if (p) p.sprite.setPosition(FIELD.X, FIELD.CY - (team === 'home' ? 5 : -5));
+    // Postes (destellos)
+    this.add.circle(x - hW, y, 1, 0xffffff).setDepth(3);
+    this.add.circle(x + hW, y, 1, 0xffffff).setDepth(3);
   }
 
   // ─── Equipos ────────────────────────────────────────────────────────────────
 
   _createTeams() {
-    // Para el futuro: Puedes elegir equipos desde el menú. Por ahora hardcodeamos:
-    // HOME: España (Rojo)
-    const homeTexture = 'team_red';
-    const homeGKTexture = 'gk_home';
-    // Portero HOME: Spawnea en la fila (CY-15), pero su meta es GOAL_TOP+2
-    const homeGK = new GoalKeeper(this, 140, FIELD.CY - 15, FIELD.GOAL_TOP + 2, 'home', homeGKTexture);
-    this.homeTeam = new Team(this, 'ESPAÑA', 'home', homeGK);
-    
-    // Fila pre-alineada para HOME
+    const homeGKY = FIELD.GOAL_TOP + 3;
+    const awayGKY = FIELD.GOAL_BOT - 3;
+
+    const homeGK = new GoalKeeper(this, FIELD.X, homeGKY, homeGKY, 'home', 'gk_home');
+    this.homeTeam = new Team(this, 'HOME', 'home', homeGK);
     for (let i = 0; i < 10; i++) {
-      const p = new Player(this, 155 + i * 15, FIELD.CY - 15, 'home', i + 1, homeTexture);
+      // Spawn fuera del lado derecho del mundo
+      const p = new Player(this, FIELD.WORLD_W + 8 + i * 7, FIELD.CY - 15, 'home', i + 1, 'team_home');
       this.homeTeam.addPlayer(p);
     }
 
-    // AWAY: Brasil (Amarillo)
-    const awayTexture = 'team_yellow';
-    const awayGKTexture = 'gk_away';
-    // Portero AWAY: Spawnea en la fila (CY+15), pero su meta es GOAL_BOT-2
-    const awayGK = new GoalKeeper(this, 140, FIELD.CY + 15, FIELD.GOAL_BOT - 2, 'away', awayGKTexture);
-    this.awayTeam = new Team(this, 'BRASIL', 'away', awayGK);
-    
+    const awayGK = new GoalKeeper(this, FIELD.X, awayGKY, awayGKY, 'away', 'gk_away');
+    this.awayTeam = new Team(this, 'AWAY', 'away', awayGK);
     for (let i = 0; i < 10; i++) {
-      const p = new Player(this, 155 + i * 15, FIELD.CY + 15, 'away', i + 1, awayTexture);
+      const p = new Player(this, FIELD.WORLD_W + 8 + i * 7, FIELD.CY + 15, 'away', i + 1, 'team_away');
       this.awayTeam.addPlayer(p);
     }
   }
 
+  // ─── Animación entrada ───────────────────────────────────────────────────────
+
   _startEntranceAnimation() {
     const homePlayers = [this.homeTeam.goalkeeper, ...this.homeTeam.getAllPlayers()];
     const awayPlayers = [this.awayTeam.goalkeeper, ...this.awayTeam.getAllPlayers()];
-    let arrivedCount = 0;
+    let arrived = 0;
     const total = homePlayers.length + awayPlayers.length;
 
-    const animateTeam = (players, isHome) => {
-      players.forEach((entity, i) => {
+    const animateTeam = (entities, isHome) => {
+      entities.forEach((entity, i) => {
         const isGK = i === 0;
-        let formPos;
-        
+        let destX, destY;
+
         if (isGK) {
-          formPos = isHome ? { x: FIELD.X, y: FIELD.GOAL_TOP + 2 } : { x: FIELD.X, y: FIELD.GOAL_BOT - 2 };
+          destX = FIELD.X;
+          destY = isHome ? FIELD.GOAL_TOP + 3 : FIELD.GOAL_BOT - 3;
         } else {
-          formPos = isHome ? this.homeTeam.getFormationPos(i - 1) : this.awayTeam.getFormationPos(i - 1);
+          const pos = isHome
+            ? this.homeTeam.getFormationPos(i - 1)
+            : this.awayTeam.getFormationPos(i - 1);
+          destX = pos?.x ?? FIELD.X;
+          destY = pos?.y ?? FIELD.CY;
         }
-        
-        const startY = isHome ? FIELD.CY - 15 : FIELD.CY + 15;
-        
-        // FASE 1: Mantener la fila ordenada hasta llegar cerca de la media cancha (vertical)
-        const reachX = 75 + i * 15; // Mantener la distancia entre ellos mientras avanzan
 
         this.tweens.add({
-          targets: entity.sprite,
-          x: reachX,
-          y: startY,
-          duration: 2200,
-          ease: 'Linear',
+          targets:  entity.sprite,
+          x:        destX,
+          y:        destY,
+          duration: 850,
+          delay:    i * 70,
+          ease:     'Quad.easeOut',
           onComplete: () => {
-            // FASE 2: Romper fila y buscar posición caminando natural
-            const dist = Phaser.Math.Distance.Between(reachX, startY, formPos.x, formPos.y);
-            const walkDuration = (dist / 38) * 1000; // Velocidad normal de caminata
-
-            this.tweens.add({
-              targets: entity.sprite,
-              x: formPos.x,
-              y: formPos.y,
-              duration: walkDuration,
-              ease: 'Sine.easeInOut',
-              onComplete: () => {
-                arrivedCount++;
-                if (arrivedCount === total) {
-                  this.isEntering = false;
-                  this.isWaitingForKickoff = true;
-                  this._prepareKickoffPositions();
-                }
-              }
-            });
-          }
+            arrived++;
+            if (arrived === total) {
+              this.isEntering          = false;
+              this.isWaitingForKickoff = true;
+              this._prepareKickoff();
+            }
+          },
         });
       });
     };
@@ -280,40 +238,34 @@ export default class MatchScene extends Phaser.Scene {
     animateTeam(awayPlayers, false);
   }
 
-  _prepareKickoffPositions() {
+  _prepareKickoff() {
     this.isKickoff = true;
     this.ball.reset(FIELD.X, FIELD.CY);
     this.ballOwner = null;
 
-    const team = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
-    const strikers = team.getAllPlayers().slice(7, 10); // Los últimos 3 son delanteros
-    
-    // Colocar a 2 delanteros en el punto central
-    strikers[0].sprite.setPosition(FIELD.X - 8, FIELD.CY);
-    strikers[1].sprite.setPosition(FIELD.X + 8, FIELD.CY);
-    
-    this.hud.showAnnouncement("PRESS PASS TO START");
+    const team    = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
+    const players = team.getAllPlayers();
+    players[7].sprite.setPosition(FIELD.X - 5, FIELD.CY);
+    players[8].sprite.setPosition(FIELD.X + 5, FIELD.CY);
+
+    this.hud.showAnnouncement('PRESS X TO START');
   }
 
-  _executeInitialKickoff() {
+  _executeKickoff() {
     this.isKickoff = true;
-    const team = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
-    const strikers = team.getAllPlayers().slice(7, 10);
-    
     this.homeTeam.setFormation('offensive');
     this.awayTeam.setFormation('offensive');
-    
-    const p1 = strikers[0];
-    const p2 = strikers[1];
 
-    // P1 tiene la bola y patea hacia atrás
-    this.ballOwner = p1;
-    p1.setBallPossession(true);
-    
-    this.time.delayedCall(300, () => {
-      const dy = p1.team === 'home' ? -1 : 1;
-      p1.kick(this.ball, 0, dy, 0.4);
-      this.isKickoff = false; // El partido ha comenzado oficialmente
+    const team   = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
+    const kicker = team.getAllPlayers()[7];
+
+    this.ballOwner = kicker;
+    kicker.setBallPossession(true);
+
+    this.time.delayedCall(250, () => {
+      const dy = kicker.team === 'home' ? -0.5 : 0.5;
+      kicker.kick(this.ball, (Math.random() - 0.5) * 0.4, dy, 0.45);
+      this.isKickoff = false;
     });
   }
 
@@ -321,25 +273,23 @@ export default class MatchScene extends Phaser.Scene {
 
   _setupCollisions() {
     const ballSprite = this.ball.getSprite();
+    const allPlayers = [
+      ...this.homeTeam.getAllPlayers(),
+      ...this.awayTeam.getAllPlayers(),
+    ];
 
-    const allPlayers = [...this.homeTeam.getAllPlayers(), ...this.awayTeam.getAllPlayers()];
-
-    // Pelota vs jugadores de campo
+    // Pelota vs jugadores
     allPlayers.forEach(player => {
       this.physics.add.overlap(ballSprite, player.getSprite(), () => {
         this._onBallTouchPlayer(player);
       });
     });
 
-    // Jugador vs Jugador (colisiones físicas y robo de balón)
+    // Jugador vs jugador
     for (let i = 0; i < allPlayers.length; i++) {
       for (let j = i + 1; j < allPlayers.length; j++) {
-        const p1 = allPlayers[i];
-        const p2 = allPlayers[j];
-        // Colisión física para que no se traspasen
+        const p1 = allPlayers[i], p2 = allPlayers[j];
         this.physics.add.collider(p1.getSprite(), p2.getSprite());
-        
-        // Trigger de tackle: si un rival toca al portador de la pelota
         this.physics.add.overlap(p1.getSprite(), p2.getSprite(), () => {
           if (p1.team !== p2.team) {
             if (this.ballOwner === p1 && !p2.isFallen) this._applyTackle(p2, p1);
@@ -349,7 +299,7 @@ export default class MatchScene extends Phaser.Scene {
       }
     }
 
-    // Pelota vs arqueros
+    // Pelota vs porteros
     this.physics.add.overlap(ballSprite, this.homeTeam.goalkeeper.getSprite(), () => {
       this._onGoalkeeperSave(this.homeTeam.goalkeeper);
     });
@@ -357,75 +307,17 @@ export default class MatchScene extends Phaser.Scene {
       this._onGoalkeeperSave(this.awayTeam.goalkeeper);
     });
 
-    // Zonas de gol (ahora coinciden con la línea de fondo exactamente)
-    // Portería HOME (arriba): el equipo AWAY marca aquí
-    this._addGoalZone(FIELD.X, FIELD.TOP - 2, FIELD.GOAL_W, 6, 'away');
-    // Portería AWAY (abajo): el equipo HOME marca aquí
-    this._addGoalZone(FIELD.X, FIELD.BOTTOM + 2, FIELD.GOAL_W, 6, 'home');
+    // ── Zonas de GOL ─────────────────────────────────────────────────────────
+    // DENTRO de la portería (detrás de la boca del arco)
+    // La bola llega aquí porque Ball.update() no rebota en la boca del arco.
+    this._addGoalZone(FIELD.X, FIELD.GOAL_TOP + 2, FIELD.GOAL_W - 2, 4, 'away');
+    this._addGoalZone(FIELD.X, FIELD.GOAL_BOT - 2, FIELD.GOAL_W - 2, 4, 'home');
   }
 
-  /**
-   * @param {Player} tackler
-   * @param {Player} victim
-   */
-  _applyTackle(tackler, victim) {
-    if (this.ballOwner === victim) {
-      // Liberar primero para que _onBallTouchPlayer no lo bloquee
-      this.releaseBallPossession();
-      this._onBallTouchPlayer(tackler);
-    }
-    victim.fallDown();
-  }
-
-  /**
-   * Un jugador toca la pelota → toma posesión si la pelota está lenta.
-   * @param {Player} player
-   */
-   _onBallTouchPlayer(player) {
-    if (this._goalieHoldingBall || this.ballOwner === player || player._catchCooldown > 0) return;
-
-    // Si el equipo acaba de patear, no puede re-atraparla inmediatamente (evita bugs de colisión)
-    const team = player.team === 'home' ? this.homeTeam : this.awayTeam;
-    if (this.ballOwner && team.catchCooldown > 0) return;
-
-    // Si la bola ya tiene dueño, NO se la pueden quitar solo por chocarla.
-    // Solo se roba con barrida (tackle) o si el pase/tiro va suelto.
-    if (this.ballOwner && this.ballOwner !== player) {
-      return; 
-    }
-
-    // Si es saque inicial, realizar pase atrás
-    if (this.isKickoff) {
-      this.isKickoff = false;
-      const dy = player.team === 'home' ? -1 : 1;
-      player.kick(this.ball, 0, dy, 0.4);
-      return;
-    }
-
-    this.ballOwner = player;
-    this.lastPossessionChange = this.time.now;
-    player.setBallPossession(true);
-    this.hud.updatePossession(player.team);
-
-    // Si un jugador de NUESTRO equipo recibe el balón, cambiar el control a él automáticamente
-    // Esto evita que la IA dispare automáticamente y te da el control inmediato.
-    if (player.team === 'home') {
-      const idx = this.homeTeam.getAllPlayers().indexOf(player);
-      if (idx !== -1) {
-        this.homeTeam.setActivePlayer(idx);
-      }
-    }
-  }
-
-  /**
-   * @param {number} x @param {number} y @param {number} w @param {number} h
-   * @param {'home'|'away'} scoringTeam
-   */
   _addGoalZone(x, y, w, h, scoringTeam) {
     const zone = this.add.zone(x, y, w, h);
     this.physics.world.enable(zone);
     this.physics.add.overlap(this.ball.getSprite(), zone, () => {
-      // Evitar goles si el portero la tiene o si ya estamos en secuencia de gol
       if (!this.matchPaused && !this.isScoring && !this._goalieHoldingBall) {
         this.isScoring = true;
         this.scoreSystem.goal(scoringTeam);
@@ -433,59 +325,86 @@ export default class MatchScene extends Phaser.Scene {
     });
   }
 
-  /** @param {GoalKeeper} goalkeeper */
-  _onGoalkeeperSave(goalkeeper) {
-    if (this._goalieHoldingBall) return;
-    this._goalieHoldingBall = true;
-    this._holdingGoalie = goalkeeper;
+  _applyTackle(tackler, victim) {
+    if (this.ballOwner === victim) {
+      this.releaseBallPossession();
+      this._onBallTouchPlayer(tackler);
+    }
+    victim.fallDown();
+  }
 
-    // Quitar posesión si alguien la tiene
+  _onBallTouchPlayer(player) {
+    if (this._goalieHoldingBall)    return;
+    if (this.ballOwner === player)  return;
+    if (player._catchCooldown > 0) return;
+
+    const team = player.team === 'home' ? this.homeTeam : this.awayTeam;
+    if (this.ballOwner && team.catchCooldown > 0) return;
+    if (this.ballOwner && this.ballOwner !== player) return;
+
+    if (this.isKickoff) {
+      this.isKickoff = false;
+      const dy = player.team === 'home' ? -1 : 1;
+      player.kick(this.ball, 0, dy, 0.4);
+      return;
+    }
+
+    this.ballOwner            = player;
+    this.lastPossessionChange = this.time.now;
+    player.setBallPossession(true);
+    this.hud.updatePossession(player.team);
+
+    if (player.team === 'home') {
+      const idx = this.homeTeam.getAllPlayers().indexOf(player);
+      if (idx !== -1) this.homeTeam.setActivePlayer(idx);
+    }
+  }
+
+  // ─── Portero atrapa ─────────────────────────────────────────────────────────
+
+  _onGoalkeeperSave(goalkeeper) {
+    if (this._goalieHoldingBall)     return;
+    if (goalkeeper.saveCooldown > 0) return;
+
+    this._goalieHoldingBall = true;
+    this._holdingGoalie     = goalkeeper;
+    goalkeeper.holdingBall  = true;
+
     this.releaseBallPossession();
     goalkeeper.performSave();
 
-    // Detener la bola y ponerla en el arquero
     this.ball.stop();
-    this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + (goalkeeper.team === 'home' ? 5 : -5));
+    const offY = goalkeeper.team === 'home' ? 4 : -4;
+    this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + offY);
 
-    // Desactivamos InputSystem temporalmente
     if (this.inputSystem) this.inputSystem.enabled = false;
+    if (this.aiSystem)    this.aiSystem.setGoalieHolding(goalkeeper.team);
 
-    // Indicamos a AISystem que prepare posiciones (animación de regreso)
-    if (this.aiSystem) this.aiSystem.setGoalieHolding(goalkeeper.team);
+    this.time.delayedCall(1200, () => {
+      // PASO 1: Limpiar flags ANTES de kick (fix del bug de despeje)
+      this._goalieHoldingBall = false;
+      this._holdingGoalie     = null;
+      goalkeeper.holdingBall  = false;
+      goalkeeper.saveCooldown = 800;
 
-    // Después de 2 segundos (dando tiempo a que caminen), el portero despeja
-    this.time.delayedCall(2000, () => {
       if (this.inputSystem) this.inputSystem.enabled = true;
-      if (this.aiSystem) this.aiSystem.setGoalieHolding(null);
+      if (this.aiSystem)    this.aiSystem.setGoalieHolding(null);
 
-      const kickY = goalkeeper.team === 'home' ? 1 : -1;
-      this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + kickY * 15); // Un poco más de margen
-      this.ball.kick((Math.random() - 0.5) * 1.2, kickY * 2.8); // Más potencia y dispersión al despeje
-      
-      // Esperar un poco más para permitir que el balón salga del área antes de habilitar re-atrapadas
-      this.time.delayedCall(800, () => {
-        this._goalieHoldingBall = false;
-        this._holdingGoalie = null;
+      goalkeeper.sprite.setTint(0xffffaa);
+      this.time.delayedCall(70, () => {
+        if (goalkeeper.sprite?.active) goalkeeper.sprite.clearTint();
       });
+
+      // PASO 2: Kick
+      const kickDir = goalkeeper.team === 'home' ? 1 : -1;
+      const lateral = (Math.random() - 0.5) * 0.65;
+      this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + kickDir * 10);
+      this.ball.kick(lateral, kickDir * 2.0);
     });
   }
 
-  // ─── Eventos de pausa ───────────────────────────────────────────────────────
+  // ─── Reset ───────────────────────────────────────────────────────────────────
 
-  _onPause() {
-    this.matchPaused = true;
-    this.homeTeam.stopAll();
-    this.awayTeam.stopAll();
-    this.ball.stop();
-  }
-
-  _onResume() {
-    this.matchPaused = false;
-  }
-
-  // ─── API pública ────────────────────────────────────────────────────────────
-
-  /** Libera la posesión del balón (llamado por InputSystem al patear). */
   releaseBallPossession() {
     if (this.ballOwner) {
       this.ballOwner.setBallPossession(false);
@@ -493,75 +412,94 @@ export default class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** Resetea pelota y jugadores tras un gol. */
   resetMatch() {
+    this._goalieHoldingBall                   = false;
+    this._holdingGoalie                        = null;
+    this.homeTeam.goalkeeper.holdingBall       = false;
+    this.homeTeam.goalkeeper.saveCooldown      = 0;
+    this.awayTeam.goalkeeper.holdingBall       = false;
+    this.awayTeam.goalkeeper.saveCooldown      = 0;
+
+    if (this.inputSystem) this.inputSystem.enabled = true;
+    if (this.aiSystem)    this.aiSystem.setGoalieHolding(null);
+
     this.releaseBallPossession();
-    this.ball.setPosition(FIELD.X, FIELD.CY);
+    this.ball.reset(FIELD.X, FIELD.CY);
     this.homeTeam.resetPositions();
     this.awayTeam.resetPositions();
     this.isScoring = false;
+
+    this.isWaitingForKickoff = true;
+    this.hud.showAnnouncement('PRESS X TO START');
   }
+
+  // ─── Pausa ───────────────────────────────────────────────────────────────────
+
+  _onPause() {
+    this.matchPaused = true;
+    this.homeTeam.stopAll();
+    this.awayTeam.stopAll();
+    this.ball.stop();
+  }
+  _onResume() { this.matchPaused = false; }
 
   // ─── Loop ───────────────────────────────────────────────────────────────────
 
   update(time, delta) {
     if (!this.matchStarted || this.matchPaused || this.isEntering) return;
 
-    // Esperar a que el usuario presione el botón para iniciar el partido
     if (this.isWaitingForKickoff) {
       if (this.inputSystem.isJustPressed('pass')) {
         this.isWaitingForKickoff = false;
         this.hud.hideAnnouncement();
-        this._executeInitialKickoff();
+        this._executeKickoff();
       }
       return;
     }
+
     if (!this.hud || !this.inputSystem || !this.aiSystem || !this.ball) return;
 
     this.hud.updateTimer(time);
-    
-    // El InputSystem decide si procesa el input o solo actualiza visuales basado en this.enabled
     this.inputSystem.update();
-    
     this.aiSystem.update(delta);
     this.ball.update();
 
-    // Sincronizar pelota al dueño o al portero que la tiene
+    // Sincronizar pelota
     if (this.ballOwner?.hasBall) {
       this.ballOwner.syncBallToPlayer(this.ball);
-    } else if (this._goalieHoldingBall && this._holdingGoalie) {
-      const g = this._holdingGoalie;
-      const offY = g.team === 'home' ? 6 : -6;
+    } else if (this._goalieHoldingBall && this._holdingGoalie?.holdingBall) {
+      const g    = this._holdingGoalie;
+      const offY = g.team === 'home' ? 4 : -4;
       this.ball.setPosition(g.sprite.x, g.sprite.y + offY);
       this.ball.stop();
     }
 
-    // Actualizar todos los jugadores y verificar barridas manuales para 100% efectividad
-    const allPlayers = [...this.homeTeam.getAllPlayers(), ...this.awayTeam.getAllPlayers()];
+    // Jugadores
+    const allPlayers = [
+      ...this.homeTeam.getAllPlayers(),
+      ...this.awayTeam.getAllPlayers(),
+    ];
     for (const player of allPlayers) {
       player.update(delta);
-      
-      // Si el jugador está barriéndose, verificar si toca a un rival
       if (player.isTackling) {
         for (const other of allPlayers) {
           if (other.team !== player.team && !other.isFallen) {
-            const dist = Phaser.Math.Distance.Between(player.sprite.x, player.sprite.y, other.sprite.x, other.sprite.y);
-            if (dist < 10) { // Distancia de contacto físico (casi tocando)
-              this._applyTackle(player, other);
-            }
+            const dist = Phaser.Math.Distance.Between(
+              player.sprite.x, player.sprite.y, other.sprite.x, other.sprite.y
+            );
+            if (dist < 9) this._applyTackle(player, other);
           }
         }
       }
     }
 
-    // Actualizar arqueros y cooldowns de equipo
     this.homeTeam.update(delta);
     this.awayTeam.update(delta);
     this.homeTeam.goalkeeper.updateAI(this.ball, delta);
     this.awayTeam.goalkeeper.updateAI(this.ball, delta);
   }
 
-  // ─── Limpieza ───────────────────────────────────────────────────────────────
+  // ─── Limpieza ────────────────────────────────────────────────────────────────
 
   shutdown() {
     this.homeTeam?.destroy();
@@ -570,6 +508,8 @@ export default class MatchScene extends Phaser.Scene {
     this.hud?.destroy();
     this.events.off('pause');
     this.events.off('resume');
-    this.ballOwner = null;
+    this.ballOwner          = null;
+    this._goalieHoldingBall = false;
+    this._holdingGoalie     = null;
   }
 }

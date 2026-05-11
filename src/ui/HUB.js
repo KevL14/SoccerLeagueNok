@@ -1,20 +1,20 @@
 /**
  * src/ui/HUB.js
  *
- * HUD del partido en la franja superior (y=0-10) del canvas 120×160.
- * Muestra marcador, cronómetro e indicador de posesión.
+ * HUD Nokia Soccer League — fijo a la cámara (scrollFactor = 0).
+ * Ocupa la franja superior (y=0–8) del VIEWPORT (no del mundo).
  */
 
 import Phaser from 'phaser';
 
 export default class HUD {
-  /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
 
     this.scoreText           = null;
     this.timerText           = null;
     this.possessionIndicator = null;
+    this.announcement        = null;
 
     this.homeScore    = 0;
     this.awayScore    = 0;
@@ -22,49 +22,43 @@ export default class HUD {
   }
 
   create() {
-    // La franja superior (y=0-10) ya tiene fondo dibujado en _drawField()
-    const HY = 5; // Y centro de la franja
+    // Fondo del HUD — fijo a cámara
+    const bg = this.scene.add.rectangle(30, 4, 60, 8, 0x000000)
+      .setScrollFactor(0).setDepth(30);
 
-    // Posesión (izquierda)
-    this.possessionIndicator = this.scene.add.text(3, HY, '▶', {
-      fontFamily: 'monospace',
-      fontSize: '7px',
-      color: '#00ff00',
-    }).setOrigin(0, 0.5).setScrollFactor(0);
+    // Separador
+    this.scene.add.graphics()
+      .setScrollFactor(0).setDepth(31)
+      .lineStyle(1, 0x44ff44, 0.7)
+      .lineBetween(0, 8, 60, 8);
 
-    // Marcador (centro)
-    this.scoreText = this.scene.add.text(60, HY, '0 - 0', {
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      color: '#ffffff',
-    }).setOrigin(0.5, 0.5).setScrollFactor(0);
+    // Posesión (izquierda) — fijo
+    this.possessionIndicator = this.scene.add.text(3, 4, '▶', {
+      fontFamily: 'monospace', fontSize: '6px', color: '#44ff44',
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(32);
 
-    // Timer (derecha)
-    this.timerText = this.scene.add.text(117, HY, '00:00', {
-      fontFamily: 'monospace',
-      fontSize: '7px',
-      color: '#00ff00',
-    }).setOrigin(1, 0.5).setScrollFactor(0);
+    // Marcador (centro) — fijo
+    this.scoreText = this.scene.add.text(30, 4, '0 - 0', {
+      fontFamily: 'monospace', fontSize: '7px', color: '#ffffff',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(32);
+
+    // Timer (derecha) — fijo
+    this.timerText = this.scene.add.text(57, 4, '00:00', {
+      fontFamily: 'monospace', fontSize: '6px', color: '#44ff44',
+    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(32);
   }
 
-  // ─── Actualización ─────────────────────────────────────────────────────────
-
-  /** @param {number} home @param {number} away */
   updateScore(home, away) {
     this.homeScore = home;
     this.awayScore = away;
     this.scoreText.setText(`${home} - ${away}`);
-    // Animación de marcador al gol
     this.scene.tweens.add({
       targets: this.scoreText,
-      scaleX: 1.4,
-      scaleY: 1.4,
-      duration: 80,
-      yoyo: true,
+      scaleX: 1.5, scaleY: 1.5,
+      duration: 90, yoyo: true,
     });
   }
 
-  /** @param {number} ms */
   updateTimer(ms) {
     const total   = Math.floor(ms / 1000);
     const minutes = Math.floor(total / 60);
@@ -75,66 +69,40 @@ export default class HUD {
     this._elapsedSecs = total;
   }
 
-  /** @param {'home'|'away'|null} team */
   updatePossession(team) {
     if (!this.possessionIndicator) return;
-    if (team === 'home') {
-      this.possessionIndicator.setText('▶').setColor('#00ff00');
-    } else if (team === 'away') {
-      this.possessionIndicator.setText('◀').setColor('#ffff00');
-    } else {
-      this.possessionIndicator.setText('·').setColor('#448844');
-    }
+    if (team === 'home') this.possessionIndicator.setText('▶').setColor('#44ff44');
+    else if (team === 'away') this.possessionIndicator.setText('◀').setColor('#ffff44');
+    else this.possessionIndicator.setText('·').setColor('#448844');
   }
 
-  getScore() {
-    return { home: this.homeScore, away: this.awayScore };
-  }
-
-  getElapsedSeconds() {
-    return this._elapsedSecs;
-  }
-
-  /**
-   * Muestra un mensaje persistente hasta que se llame a hideAnnouncement.
-   * @param {string} text
-   */
   showAnnouncement(text) {
     if (this.announcement) this.announcement.destroy();
-    this.announcement = this.scene.add.text(60, 45, text, {
-      fontFamily: 'monospace',
-      fontSize: '7px',
-      color: '#00ff00',
+    this.announcement = this.scene.add.text(30, 44, text, {
+      fontFamily: 'monospace', fontSize: '6px', color: '#ffff44',
       backgroundColor: '#000000cc',
-      padding: { x: 4, y: 2 }
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+      padding: { x: 3, y: 2 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
   }
 
   hideAnnouncement() {
-    if (this.announcement) {
-      this.announcement.destroy();
-      this.announcement = null;
-    }
+    if (this.announcement) { this.announcement.destroy(); this.announcement = null; }
   }
 
-  /**
-   * Muestra un mensaje temporal centrado en el campo.
-   * @param {string} text
-   * @param {number} [duration=1200]
-   */
-  showMessage(text, duration = 1200) {
-    const msg = this.scene.add.text(60, 85, text, {
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      color: '#ffff00',
-    }).setOrigin(0.5).setScrollFactor(0);
-
+  showMessage(text, duration = 1000) {
+    const msg = this.scene.add.text(30, 44, text, {
+      fontFamily: 'monospace', fontSize: '6px', color: '#ffff00',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
     this.scene.time.delayedCall(duration, () => msg.destroy());
   }
+
+  getScore()          { return { home: this.homeScore, away: this.awayScore }; }
+  getElapsedSeconds() { return this._elapsedSecs; }
 
   destroy() {
     this.scoreText?.destroy();
     this.timerText?.destroy();
     this.possessionIndicator?.destroy();
+    this.announcement?.destroy();
   }
 }

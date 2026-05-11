@@ -1,118 +1,89 @@
 /**
  * src/entities/Team.js
  *
- * Formaciones alineadas con el campo vertical (120×160).
- *
- * HOME defiende arriba (portería y≈10), ataca abajo.
- * AWAY defiende abajo (portería y≈157), ataca arriba.
+ * Formaciones para campo 60×200 px.
+ * HOME defiende portería superior (y=GOAL_TOP), ataca portería inferior.
  */
 
 import Phaser from 'phaser';
-
 import { FIELD } from '../config/fieldConstants.js';
 
-// isHome: true si es el equipo que empieza arriba (defiende arriba).
-// isOffensive: true para posiciones de ataque (4-3-3 agresivo), false para inicio (todos en su campo).
+/**
+ * @param {boolean} isHome
+ * @param {boolean} isOffensive
+ */
 const calcFormation = (isHome, isOffensive) => {
-  const dy = isHome ? 1 : -1;
-  const midY = FIELD.CY;
-  
-  // Defensa: Bien atrás
-  const defY = isOffensive ? (isHome ? FIELD.TOP + 35 : FIELD.BOTTOM - 35) : (midY - dy * 65);
-  // Medio: Espaciado
-  const midY_pos = isOffensive ? midY : (midY - dy * 35);
-  
-  // Ataque: 
-  // Si es ofensivo, van al área rival. 
-  // Si es defensivo, los dejamos un poco antes de la línea media (12px de margen)
-  const fwdY = isOffensive 
-    ? (isHome ? FIELD.BOTTOM - 35 : FIELD.TOP + 35)
-    : (midY - dy * 12); 
+  const CY   = FIELD.CY;
+  const sign = isHome ? 1 : -1;
+
+  // Fase defensiva: todos en su mitad
+  const DEF_Y = isHome ? FIELD.TOP  + 24 : FIELD.BOTTOM - 24;
+  const MID_Y = CY + sign * (-28);
+  const FWD_Y = CY + sign * (-10);
+
+  // Fase ofensiva: 4-3-3 proyectado
+  const DEF_Y_O = isHome ? FIELD.TOP  + 18 : FIELD.BOTTOM - 18;
+  const MID_Y_O = CY + sign * 14;
+  const FWD_Y_O = isHome ? FIELD.BOTTOM - 24 : FIELD.TOP  + 24;
+
+  const defY = isOffensive ? DEF_Y_O : DEF_Y;
+  const midY = isOffensive ? MID_Y_O : MID_Y;
+  const fwdY = isOffensive ? FWD_Y_O : FWD_Y;
 
   return [
     // 4 Defensas
-    { x: 15, y: defY }, { x: 45, y: defY }, { x: 75, y: defY }, { x: 105, y: defY },
-    // 3 Medios
-    { x: 25, y: midY_pos }, { x: 60, y: midY_pos }, { x: 95, y: midY_pos },
+    { x:  8, y: defY }, { x: 22, y: defY }, { x: 38, y: defY }, { x: 52, y: defY },
+    // 3 Mediocampistas
+    { x: 12, y: midY }, { x: 30, y: midY }, { x: 48, y: midY },
     // 3 Delanteros
-    { x: 25, y: fwdY }, { x: 60, y: fwdY }, { x: 95, y: fwdY }
+    { x: 12, y: fwdY }, { x: 30, y: fwdY }, { x: 48, y: fwdY },
   ];
 };
 
 const FORMATIONS = {
   home: {
-    offensive: calcFormation(true, true),
-    defensive: calcFormation(true, false)
+    offensive: calcFormation(true,  true),
+    defensive: calcFormation(true,  false),
   },
   away: {
     offensive: calcFormation(false, true),
-    defensive: calcFormation(false, false)
-  }
+    defensive: calcFormation(false, false),
+  },
 };
 
 export default class Team {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {string} name
-   * @param {'home'|'away'} teamType
-   * @param {import('./GoalKeeper.js').default} goalkeeper
-   */
   constructor(scene, name, teamType, goalkeeper) {
     this.scene    = scene;
     this.name     = name;
     this.teamType = teamType;
 
     this.goalkeeper        = goalkeeper;
-    /** @type {import('./Player.js').default[]} */
     this.players           = [];
     this.activePlayerIndex = 0;
 
-    this.possessionTime = 0;
-    this.shotsOnTarget  = 0;
-    this.catchCooldown  = 0; 
+    this.possessionTime   = 0;
+    this.shotsOnTarget    = 0;
+    this.catchCooldown    = 0;
     this.currentFormation = 'defensive';
   }
 
   setFormation(type) {
-    if (type === 'offensive' || type === 'defensive') {
-      this.currentFormation = type;
-    }
+    if (type === 'offensive' || type === 'defensive') this.currentFormation = type;
   }
 
   update(delta) {
-    if (this.catchCooldown > 0) {
-      this.catchCooldown -= delta;
-    }
+    if (this.catchCooldown > 0) this.catchCooldown -= delta;
   }
 
-  // ─── Jugadores ─────────────────────────────────────────────────────────────
+  addPlayer(player) { this.players.push(player); }
+  getPlayer(i)      { return this.players[i] ?? null; }
+  getAllPlayers()    { return this.players; }
+  getPlayerCount()  { return this.players.length; }
 
-  /** @param {import('./Player.js').default} player */
-  addPlayer(player) {
-    this.players.push(player);
+  getActivePlayer() { return this.players[this.activePlayerIndex] ?? null; }
+  setActivePlayer(i) {
+    if (i >= 0 && i < this.players.length) this.activePlayerIndex = i;
   }
-
-  /** @param {number} index @returns {import('./Player.js').default|null} */
-  getPlayer(index) {
-    return this.players[index] ?? null;
-  }
-
-  getActivePlayer() {
-    return this.players[this.activePlayerIndex] ?? null;
-  }
-
-  /** @param {number} index */
-  setActivePlayer(index) {
-    if (index >= 0 && index < this.players.length) {
-      this.activePlayerIndex = index;
-    }
-  }
-
-  getAllPlayers() { return this.players; }
-
-  getPlayerCount() { return this.players.length; }
-
-  // ─── Formación ─────────────────────────────────────────────────────────────
 
   resetPositions() {
     const positions = FORMATIONS[this.teamType][this.currentFormation];
@@ -122,21 +93,18 @@ export default class Team {
       player.sprite.setPosition(pos.x, pos.y);
       player.sprite.body.setVelocity(0, 0);
       player.setBallPossession(false);
+      player.isFallen   = false;
+      player.isTackling = false;
+      player.sprite.setAngle(0);
+      player.sprite.clearTint();
     });
     this.goalkeeper.resetPosition();
   }
 
-  /** @returns {{x:number,y:number}|null} Posición de formación para el índice dado */
   getFormationPos(index) {
     return FORMATIONS[this.teamType][this.currentFormation]?.[index] ?? null;
   }
 
-  // ─── Utilidades ────────────────────────────────────────────────────────────
-
-  /**
-   * Jugador más cercano a (x, y).
-   * @param {number} x @param {number} y
-   */
   getNearestPlayer(x, y) {
     if (!this.players.length) return null;
     return this.players.reduce((best, p) => {
@@ -146,22 +114,7 @@ export default class Team {
     });
   }
 
-  stopAll() {
-    this.players.forEach(p => p.stop());
-  }
-
-  // ─── Stats ─────────────────────────────────────────────────────────────────
-
-  /** @param {number} ms */
-  addPossessionTime(ms) { this.possessionTime += ms; }
-  addShotOnTarget()      { this.shotsOnTarget++; }
-
-  getStats() {
-    return { name: this.name, players: this.players.length,
-             possession: this.possessionTime, shots: this.shotsOnTarget };
-  }
-
-  // ─── Limpieza ──────────────────────────────────────────────────────────────
+  stopAll() { this.players.forEach(p => p.stop()); }
 
   destroy() {
     this.goalkeeper?.destroy();

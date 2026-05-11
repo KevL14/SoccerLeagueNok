@@ -1,42 +1,38 @@
 /**
  * src/entities/Player.js
  *
- * Jugador de campo: movimiento, pateo y posesión.
+ * Nokia Soccer League — jugador de campo.
+ * Sprite: 6×10 px (team_home / team_away generados en BootScene)
+ * Velocidad reducida para ritmo Nokia auténtico.
  */
 
 import Phaser from 'phaser';
+import { FIELD } from '../config/fieldConstants.js';
 
-const KICK_COOLDOWN_MS = 350; // ms entre pateos
+const KICK_COOLDOWN_MS = 320;
 
 export default class Player {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {number} x
-   * @param {number} y
-   * @param {'home'|'away'} team
-   * @param {string} [texture]
-   */
   constructor(scene, x, y, team, playerNumber = 1, texture) {
     this.scene        = scene;
     this.team         = team;
     this.playerNumber = playerNumber;
 
-    const tex = texture || (team === 'home' ? 'player_home' : 'player_away');
+    const tex = texture || (team === 'home' ? 'team_home' : 'team_away');
     this.sprite = scene.add.sprite(x, y, tex);
+    this.sprite.setDepth(4);
     scene.physics.world.enable(this.sprite);
 
-    // Ajustar caja de colisión para el nuevo sprite de 8x12 (enfocado en torso y pies)
-    this.sprite.body.setSize(6, 8);
-    this.sprite.body.setOffset(1, 4);
-
-    this.sprite.body.setCollideWorldBounds(true);
-    this.sprite.body.setBounce(0.1);
-    this.sprite.body.setDrag(120);   // frenado natural al soltar tecla
+    // Cuerpo físico: parte central del sprite 6×10
+    this.sprite.body.setSize(5, 7);
+    this.sprite.body.setOffset(0, 2);
+    this.sprite.body.setCollideWorldBounds(false);
+    this.sprite.body.setBounce(0);
+    this.sprite.body.setDrag(200);
     this.sprite.body.setMaxSpeed(55);
 
-    this.speed         = 50; // (Antes 45)
+    this.speed  = 45;   // reducido (era 58) — más Nokia
     this.hasBall       = false;
-    this._kickCooldown = 0;
+    this._kickCooldown  = 0;
     this._catchCooldown = 0;
     this.direction     = { x: 0, y: 0 };
     this.isFallen      = false;
@@ -44,50 +40,14 @@ export default class Player {
     this._walkTimer    = 0;
   }
 
-  // ─── Acciones ──────────────────────────────────────────────────────────────
-
-  /**
-   * Realiza una barrida (tackle) física corta pero rápida.
-   * @param {number} dx
-   * @param {number} dy
-   */
-  tackle(dx, dy) {
-    if (this.isFallen || this.isTackling || this.hasBall) return;
-    
-    this.isTackling = true;
-    
-    // Dash corto (5px solicitado por usuario) pero rápido (100px/s)
-    const len = Math.hypot(dx, dy);
-    const vx = dx / len * 100;
-    const vy = dy / len * 100;
-    
-    this.sprite.body.setVelocity(vx, vy);
-    this.sprite.setAngle(45 * Math.sign(dx));
-    this.sprite.setTint(0xffaaaa);
-
-    this.scene.time.delayedCall(50, () => {
-      if (!this.sprite?.body) return;
-      this.isTackling = false;
-      this.sprite.clearTint();
-      this.sprite.setAngle(0);
-      this.stop();
-    });
-  }
-
   // ─── Movimiento ────────────────────────────────────────────────────────────
 
-  /**
-   * @param {number} dirX  -1 · 0 · 1
-   * @param {number} dirY  -1 · 0 · 1
-   */
   move(dirX, dirY) {
     if (this.isFallen) return;
-
     const len = Math.hypot(dirX, dirY);
     if (len > 0) { dirX /= len; dirY /= len; }
-
     this.sprite.body.setVelocity(dirX * this.speed, dirY * this.speed);
-    this.direction = { x: dirX, y: dirY };
+    if (len > 0) this.direction = { x: dirX, y: dirY };
   }
 
   stop() {
@@ -97,109 +57,98 @@ export default class Player {
 
   // ─── Pelota ────────────────────────────────────────────────────────────────
 
-  /**
-   * Patea la pelota. Retorna true si el pateo fue exitoso.
-   * @param {import('./Ball.js').default} ball
-   * @param {number} [dirX=0]
-   * @param {number} [dirY=1]
-   * @param {number} [powerRatio=1]
-   * @returns {boolean}
-   */
   kick(ball, dirX = 0, dirY = 1, powerRatio = 1) {
     if (this._kickCooldown > 0 || !this.hasBall) return false;
     ball.kick(dirX, dirY, powerRatio);
-    this._kickCooldown = KICK_COOLDOWN_MS;
-    this._catchCooldown = 500; // No puede re-atraparla por 0.5s
+    this._kickCooldown  = KICK_COOLDOWN_MS;
+    this._catchCooldown = 500;
     this.setBallPossession(false);
-
-    // Cooldown de equipo: evita que compañeros atrapen el balón por error al disparar
-    const team = (this.team === 'home') ? this.scene.homeTeam : this.scene.awayTeam;
-    if (team) {
-      team.catchCooldown = 250; // 250ms de "gracia" para el equipo
-    }
+    const team = this.team === 'home' ? this.scene.homeTeam : this.scene.awayTeam;
+    if (team) team.catchCooldown = 200;
     return true;
   }
 
-  /** @param {boolean} has */
   setBallPossession(has) {
     this.hasBall = has;
     if (has) {
-      // Usar un tinte para indicar posesión o dejarlo así
-      this.sprite.setTint(0xaaffaa);
+      this.sprite.setTint(0xaaffaa); // destello verde al recibir
     } else {
       this.sprite.clearTint();
     }
   }
 
-  /**
-   * Mantiene la pelota pegada al jugador.
-   * @param {import('./Ball.js').default} ball
-   */
   syncBallToPlayer(ball) {
     if (!this.hasBall) return;
     const s = ball.getSprite();
     if (!s?.body) return;
-
-    // Bola pegada estáticamente al jugador sin saltar o girar
-    const finalOX = this.direction.x === 0 && this.direction.y === 0 ? 0 : this.direction.x * 4;
-    const finalOY = this.direction.x === 0 && this.direction.y === 0 ? 4 : this.direction.y * 4;
-
-    s.setPosition(this.sprite.x + finalOX, this.sprite.y + finalOY);
+    const ox = this.direction.x * 4;
+    const oy = this.direction.y === 0 ? 4 : this.direction.y * 4;
+    s.setPosition(this.sprite.x + ox, this.sprite.y + oy);
     s.body.setVelocity(0, 0);
-    s.setAngle(0); // Forzar que la bola no gire visualmente
   }
 
-  // ─── Acciones Especiales ───────────────────────────────────────────────────
+  // ─── Acciones ──────────────────────────────────────────────────────────────
+
+  tackle(dx = 0, dy = 1) {
+    if (this.isFallen || this.isTackling || this.hasBall) return;
+    this.isTackling = true;
+    const len = Math.hypot(dx, dy) || 1;
+    this.sprite.body.setVelocity((dx / len) * 70, (dy / len) * 70);
+    this.sprite.setTint(0xffaaaa);
+    this.scene.time.delayedCall(80, () => {
+      if (!this.sprite?.body) return;
+      this.isTackling = false;
+      this.sprite.clearTint();
+      this.stop();
+    });
+  }
 
   fallDown() {
+    if (this.isFallen) return;
     this.isFallen = true;
     this.stop();
-    this.sprite.body.checkCollision.none = true; // Permite que otros pasen por encima
-    this.sprite.setAngle(90); // Acostado
-    this.sprite.setTint(0x555555); // Oscurecido
-    this.scene.time.delayedCall(1500, () => {
+    this.sprite.body.checkCollision.none = true;
+    this.sprite.setTint(0x777777);
+    this.sprite.setAngle(90);
+    this.scene.time.delayedCall(1000, () => {
       if (!this.sprite?.body) return;
       this.isFallen = false;
       this.sprite.body.checkCollision.none = false;
       this.sprite.setAngle(0);
       this.sprite.clearTint();
-      if (this.hasBall) this.setBallPossession(true); 
     });
   }
 
-  // ─── Utilidades ────────────────────────────────────────────────────────────
-
   getPosition() { return { x: this.sprite.x, y: this.sprite.y }; }
+  getSprite()   { return this.sprite; }
 
-  getSprite() { return this.sprite; }
-
-  /** @param {number} x @param {number} y @param {number} [dist=8] */
-  isNearPosition(x, y, dist = 8) {
+  isNearPosition(x, y, dist = 6) {
     return Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < dist;
   }
 
   // ─── Loop ──────────────────────────────────────────────────────────────────
 
-  /** @param {number} delta ms */
   update(delta) {
-    if (this._kickCooldown > 0) this._kickCooldown -= delta;
+    if (this._kickCooldown  > 0) this._kickCooldown  -= delta;
     if (this._catchCooldown > 0) this._catchCooldown -= delta;
 
     if (this.isFallen) return;
 
-    // Animación de caminata "Nokia" (inclinación)
+    // Clampear dentro del campo activo
+    this.sprite.x = Phaser.Math.Clamp(this.sprite.x, FIELD.LEFT + 2,  FIELD.RIGHT - 2);
+    this.sprite.y = Phaser.Math.Clamp(this.sprite.y, FIELD.TOP  + 1,  FIELD.BOTTOM - 1);
+
+    // Animación de caminata Nokia: leve oscilación
     const speed = Math.hypot(this.sprite.body.velocity.x, this.sprite.body.velocity.y);
-    if (speed > 5) {
-      this._walkTimer = (this._walkTimer || 0) + delta;
-      // Rotación de ±12 grados
-      this.sprite.setAngle(Math.sin(this._walkTimer * 0.015) * 12);
+    if (speed > 3) {
+      this._walkTimer += delta;
+      this.sprite.setAngle(Math.sin(this._walkTimer * 0.018) * 9);
     } else {
-      this.sprite.setAngle(0);
+      const cur = this.sprite.angle;
+      this.sprite.setAngle(Math.abs(cur) > 0.5 ? cur * 0.6 : 0);
       this._walkTimer = 0;
     }
   }
-
-  // ─── Limpieza ──────────────────────────────────────────────────────────────
 
   destroy() { this.sprite?.destroy(); }
 }
