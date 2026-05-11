@@ -121,6 +121,11 @@ export default class AISystem {
 
       // ── CASO 2: Balón libre ───────────────────────────────────────────
       if (!ballOwner) {
+        if (player.isWaitingForPass) {
+          player.stop();
+          return;
+        }
+
         const inZone = this._isBallInZone(index, ballPos, attackingDown);
         if (player === nearestPlayer && inZone) {
           this._chaseBall(player, ballPos);
@@ -171,7 +176,7 @@ export default class AISystem {
         const zigX = Math.sin(this.scene.time.now * 0.003 + index) * 0.3;
         player.move(zigX, attackingDown ? 1.2 : -1.2);
         // Si hay presión fuerte, intentar pase
-        if (Math.random() < 0.02) this._tryPassToTeammate(player, attackingDown);
+        if (Math.random() < 0.04) this._tryPassToTeammate(player, attackingDown);
       }
     } else if (role === 'midfielder') {
       if (distToGoal < 110) {
@@ -244,13 +249,13 @@ export default class AISystem {
     const dy     = oppPos.y - pos.y;
     const dist   = Math.hypot(dx, dy);
 
-    if (dist < 12) {
+    if (dist < 14) {
       player.tackle(dx, dy);
       return;
     }
 
     if (dist > 1) {
-      player.move(dx / dist * 1.15, dy / dist * 1.15);
+      player.move(dx / dist * 1.3, dy / dist * 1.3);
     }
   }
 

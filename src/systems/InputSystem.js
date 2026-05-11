@@ -25,6 +25,13 @@ export default class InputSystem {
     this._activeMarker.fillStyle(0xffff00, 1);
     this._activeMarker.fillTriangle(0, 0, -3, -5, 3, -5); // Triangulito apuntando abajo
     this._activeMarker.setDepth(10);
+
+    this._receiverMarker = this.scene.add.graphics();
+    this._receiverMarker.fillStyle(0x00ffff, 0.6);
+    this._receiverMarker.fillCircle(0, 0, 2);
+    this._receiverMarker.setDepth(10);
+    this._receiverMarker.setVisible(false);
+
     this.enabled = true;
 
     this._initKeys();
@@ -81,6 +88,15 @@ export default class InputSystem {
 
     this._moveDir = this._readMovement();
     activePlayer.move(this._moveDir.x, this._moveDir.y);
+
+    // Buscar objetivo de pase en tiempo real
+    this._passTarget = this._findBestPassTarget(activePlayer);
+    if (this._passTarget && activePlayer.hasBall) {
+      this._receiverMarker.setPosition(this._passTarget.sprite.x, this._passTarget.sprite.y - 12);
+      this._receiverMarker.setVisible(true);
+    } else {
+      this._receiverMarker.setVisible(false);
+    }
 
     if (this._kickCooldown > 0) {
       this._kickCooldown -= this.scene.game.loop.deltaTime;
@@ -148,20 +164,75 @@ export default class InputSystem {
 
     if (player.hasBall) {
       if (this._kickCooldown > 0) return;
-      let { x: kx, y: ky } = this._moveDir;
-      if (kx === 0 && ky === 0) { ky = 1; }
+      
+      let dx, dy;
+      if (this._passTarget) {
+        // Pase dirigido al compañero marcado
+        dx = this._passTarget.sprite.x - player.sprite.x;
+        dy = this._passTarget.sprite.y - player.sprite.y;
+        
+        // Hacer que el receptor se quede estático esperando el balón
+        const target = this._passTarget;
+        target.isWaitingForPass = true;
+        this.scene.time.delayedCall(1500, () => {
+          if (target) target.isWaitingForPass = false;
+        });
 
-      // Potencia menor para el pase (powerRatio = 0.7)
-      const kicked = player.kick(this.ball, kx, ky, 0.7);
+        const dist = Math.hypot(dx, dy);
+        dx /= dist;
+        dy /= dist;
+      } else {
+        // Pase en dirección del movimiento
+        ({ x: dx, y: dy } = this._moveDir);
+        if (dx === 0 && dy === 0) dy = player.team === 'home' ? 1 : -1;
+      }
+
+      // Potencia aumentada para el pase (powerRatio = 1.3 antes 0.7)
+      const kicked = player.kick(this.ball, dx, dy, 1.3);
       if (kicked) {
         this.scene.releaseBallPossession?.();
         this._kickCooldown = KICK_COOLDOWN_MS;
       }
     } else {
       console.log('Action: TACKLE');
-      // Si no tiene el balón, hace una barrida
-      player.tackle();
+      player.tackle(this._moveDir.x, this._moveDir.y);
     }
+  }
+
+  _findBestPassTarget(player) {
+    if (!player.hasBall || !this.homeTeam) return null;
+
+    const players = this.homeTeam.getAllPlayers();
+    let bestTarget = null;
+    let minDist = Infinity;
+
+    // Dirección actual del jugador (o hacia adelante si está quieto)
+    let vx = this._moveDir.x;
+    let vy = this._moveDir.y;
+    if (vx === 0 && vy === 0) {
+      vy = player.team === 'home' ? 1 : -1;
+    }
+
+    players.forEach(p => {
+      if (p === player) return;
+
+      const dx = p.sprite.x - player.sprite.x;
+      const dy = p.sprite.y - player.sprite.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < 15) return; // Demasiado cerca
+
+      // Verificar si está en un cono de 60 grados (aprox cos(30)=0.86)
+      const dot = (dx * vx + dy * vy) / (dist * Math.hypot(vx, vy));
+      if (dot > 0.75) { // Un cono generoso
+        if (dist < minDist) {
+          minDist = dist;
+          bestTarget = p;
+        }
+      }
+    });
+
+    return bestTarget;
   }
 
   _onPause() {
@@ -172,6 +243,11 @@ export default class InputSystem {
   _onPlayerSwitch() {
     if (!this.homeTeam || !this.ball) return;
     const team = this.homeTeam;
+    const activePlayer = team.getActivePlayer();
+    
+    // Deshabilitar cambio de jugador si llevamos el balón para evitar pases accidentales
+    if (activePlayer && activePlayer.hasBall) return;
+
     const ballPos = this.ball.getPosition();
     let bestIndex = -1;
     let minDist = Infinity;

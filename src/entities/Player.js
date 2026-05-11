@@ -74,6 +74,7 @@ export default class Player {
   setBallPossession(has) {
     this.hasBall = has;
     if (has) {
+      this.isWaitingForPass = false;
       this.sprite.setTint(0xaaffaa); // destello verde al recibir
     } else {
       this.sprite.clearTint();

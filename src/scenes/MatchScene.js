@@ -334,7 +334,7 @@ export default class MatchScene extends Phaser.Scene {
       this.homeTeam.setActivePlayer(7);
     }
 
-    this.events.emit('showAnnouncement', 'PRESS X TO START');
+    this.events.emit('showAnnouncement', 'PRESIONA PASE\nPARA INICIAR');
   }
 
   _executeKickoff() {
@@ -386,11 +386,32 @@ export default class MatchScene extends Phaser.Scene {
     for (let i = 0; i < allPlayers.length; i++) {
       for (let j = i + 1; j < allPlayers.length; j++) {
         const p1 = allPlayers[i], p2 = allPlayers[j];
-        this.physics.add.collider(p1.getSprite(), p2.getSprite());
+        
+        // Físicamente solo colisionan si son de equipos distintos
+        this.physics.add.collider(p1.getSprite(), p2.getSprite(), null, () => {
+          return p1.team !== p2.team;
+        });
+
         this.physics.add.overlap(p1.getSprite(), p2.getSprite(), () => {
           if (p1.team !== p2.team) {
-            if (this.ballOwner === p1 && !p2.isFallen) this._applyTackle(p2, p1);
-            else if (this.ballOwner === p2 && !p1.isFallen) this._applyTackle(p1, p2);
+            if (this.ballOwner === p1 && !p2.isFallen) {
+              if (p2.isTackling) {
+                this._applyTackle(p2, p1);
+              } else {
+                // Robo limpio por solo tocarlo
+                this.releaseBallPossession();
+                this._onBallTouchPlayer(p2);
+              }
+            }
+            else if (this.ballOwner === p2 && !p1.isFallen) {
+              if (p1.isTackling) {
+                this._applyTackle(p1, p2);
+              } else {
+                // Robo limpio por solo tocarlo
+                this.releaseBallPossession();
+                this._onBallTouchPlayer(p1);
+              }
+            }
           }
         });
       }
@@ -402,6 +423,22 @@ export default class MatchScene extends Phaser.Scene {
     });
     this.physics.add.overlap(ballSprite, this.awayTeam.goalkeeper.getSprite(), () => {
       this._onGoalkeeperSave(this.awayTeam.goalkeeper);
+    });
+
+    // Jugador vs su propio portero
+    allPlayers.forEach(player => {
+      this.physics.add.overlap(player.getSprite(), this.homeTeam.goalkeeper.getSprite(), () => {
+        if (player.team === 'home' && this.ballOwner === player) {
+          this.releaseBallPossession();
+          this._onGoalkeeperSave(this.homeTeam.goalkeeper);
+        }
+      });
+      this.physics.add.overlap(player.getSprite(), this.awayTeam.goalkeeper.getSprite(), () => {
+        if (player.team === 'away' && this.ballOwner === player) {
+          this.releaseBallPossession();
+          this._onGoalkeeperSave(this.awayTeam.goalkeeper);
+        }
+      });
     });
 
     // ── Zonas de GOL ─────────────────────────────────────────────────────────
@@ -547,11 +584,60 @@ export default class MatchScene extends Phaser.Scene {
         if (goalkeeper.sprite?.active) goalkeeper.sprite.clearTint();
       });
 
-      // PASO 2: Kick
-      const kickDir = goalkeeper.team === 'home' ? 1 : -1;
-      const lateral = (Math.random() - 0.5) * 0.65;
-      this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + kickDir * 10);
-      this.ball.kick(lateral, kickDir * 2.0);
+      // PASO 2: Kick Inteligente (buscar compañero más desmarcado)
+      const isHome = goalkeeper.team === 'home';
+      const team = isHome ? this.homeTeam : this.awayTeam;
+      const oppTeam = isHome ? this.awayTeam : this.homeTeam;
+      const teammates = team.getAllPlayers();
+      const opponents = oppTeam.getAllPlayers();
+      const kickDirY = isHome ? 1 : -1;
+      
+      let bestTarget = null;
+      let bestSafetyScore = -Infinity;
+
+      teammates.forEach(p => {
+        const dx = p.sprite.x - goalkeeper.sprite.x;
+        const dy = p.sprite.y - goalkeeper.sprite.y;
+        
+        // El compañero debe estar por delante del portero
+        if ((kickDirY === 1 && dy < 20) || (kickDirY === -1 && dy > -20)) return;
+
+        // Calcular qué tan lejos está el oponente más cercano a este compañero
+        let minOppDist = Infinity;
+        opponents.forEach(opp => {
+          const distToOpp = Phaser.Math.Distance.Between(p.sprite.x, p.sprite.y, opp.sprite.x, opp.sprite.y);
+          if (distToOpp < minOppDist) minOppDist = distToOpp;
+        });
+
+        // La puntuación principal es la distancia al rival (mientras más lejos, más seguro)
+        let safetyScore = minOppDist;
+
+        // Penalizar pases exageradamente largos que puedan ser interceptados en el camino
+        const distFromGK = Math.hypot(dx, dy);
+        if (distFromGK > 100) safetyScore -= (distFromGK - 100) * 0.5;
+
+        if (safetyScore > bestSafetyScore) {
+          bestSafetyScore = safetyScore;
+          bestTarget = p;
+        }
+      });
+
+      let targetX = goalkeeper.sprite.x;
+      let targetY = goalkeeper.sprite.y + kickDirY * 60;
+
+      if (bestTarget) {
+        // Enviar el pase directamente al jugador más seguro
+        targetX = bestTarget.sprite.x;
+        targetY = bestTarget.sprite.y;
+      }
+
+      const dx = targetX - goalkeeper.sprite.x;
+      const dy = targetY - goalkeeper.sprite.y;
+      const dist = Math.hypot(dx, dy) || 1;
+
+      this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + kickDirY * 10);
+      // Fuerza un poco mayor (1.8) para que el saque llegue firme al compañero
+      this.ball.kick(dx / dist * 1.8, dy / dist * 1.8);
     });
   }
 
@@ -615,6 +701,27 @@ export default class MatchScene extends Phaser.Scene {
       return;
     }
 
+    if (this.isWaitingForExtraTimeChoice) {
+      if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('W')) || Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('UP'))) {
+        this.extraTimeOption = 0;
+        this._showExtraTimeMenu();
+      } else if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('S')) || Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('DOWN'))) {
+        this.extraTimeOption = 1;
+        this._showExtraTimeMenu();
+      }
+      
+      if (this.input.keyboard.checkDown(this.input.keyboard.addKey('ENTER'), 500)) {
+        this.isWaitingForExtraTimeChoice = false;
+        this.events.emit('hideExtraTimeMenu'); // Reuses hideHalfTimeStats
+        if (this.extraTimeOption === 0) {
+          this._startExtraTime();
+        } else {
+          this.events.emit('showAnnouncement', 'MATCH ENDED');
+        }
+      }
+      return;
+    }
+
     if (this.matchPaused || this.isEntering) return;
 
     if (this.isWaitingForKickoff) {
@@ -641,8 +748,20 @@ export default class MatchScene extends Phaser.Scene {
         return;
       }
 
-      if (this.matchTime >= 90000) {
+      if (!this.fullTimeReached && this.matchTime >= 90000) {
         this.fullTimeReached = true;
+        this._startFullTime();
+        return;
+      }
+
+      if (this.isExtraTime && !this.extraTimeHalfReached && this.matchTime >= 110000) {
+        this.extraTimeHalfReached = true;
+        this._startHalfTime();
+        return;
+      }
+
+      if (this.isExtraTime && !this.extraTimeFullReached && this.matchTime >= 130000) {
+        this.extraTimeFullReached = true;
         this._startFullTime();
         return;
       }
@@ -759,7 +878,7 @@ export default class MatchScene extends Phaser.Scene {
 
   _startFullTime() {
     this.matchPaused = true;
-    this.events.emit('showAnnouncement', 'FULL TIME');
+    this.events.emit('showAnnouncement', this.isExtraTime ? 'EXTRA TIME END' : 'FULL TIME');
     this.homeTeam.stopAll();
     this.awayTeam.stopAll();
     this.ball.stop();
@@ -776,6 +895,38 @@ export default class MatchScene extends Phaser.Scene {
     } else if (awayScore > homeScore) {
       winner = this.awayTeam;
       loser  = this.homeTeam;
+    }
+
+    // Empate
+    if (!winner) {
+      // Todos salen juntos, sin celebrar
+      const allPlayers = [
+        ...this.homeTeam.getAllPlayers(), this.homeTeam.goalkeeper,
+        ...this.awayTeam.getAllPlayers(), this.awayTeam.goalkeeper
+      ];
+      allPlayers.forEach((p, i) => {
+        this.tweens.add({
+          targets:  p.sprite,
+          x:        FIELD.WORLD_W + 15 + (i * 4),
+          y:        FIELD.CY + (Math.random() - 0.5) * 20,
+          duration: 2500,
+          ease:     'Linear'
+        });
+      });
+
+      if (!this.isExtraTime) {
+        this.time.delayedCall(3000, () => {
+          this.isWaitingForExtraTimeChoice = true;
+          this.extraTimeOption = 0; // 0 = Extra Time, 1 = End Match
+          this._showExtraTimeMenu();
+        });
+      } else {
+        // Empate después de la prórroga (luego se programarán penales)
+        this.time.delayedCall(3000, () => {
+          this.events.emit('showHalfTimeStats', 'MATCH ENDED\n\nDRAW');
+        });
+      }
+      return;
     }
 
     // El ganador celebra
@@ -813,6 +964,25 @@ export default class MatchScene extends Phaser.Scene {
         away: awayScore
       });
     });
+  }
+
+  _showExtraTimeMenu() {
+    const text = [
+      'DRAW',
+      '',
+      this.extraTimeOption === 0 ? '> EXTRA TIME <' : '  EXTRA TIME  ',
+      this.extraTimeOption === 1 ? '> END MATCH <' : '  END MATCH  '
+    ].join('\n');
+    this.events.emit('showExtraTimeMenu', text);
+  }
+
+  _startExtraTime() {
+    this.isExtraTime = true;
+    this.extraTimeHalfReached = false;
+    this.extraTimeFullReached = false;
+    this.matchTime = 90000; // Reset timer to start of Extra Time
+    
+    this._handleHalfTimeResume(); // Reuse the same logic to set teams and start
   }
 
   // ─── Limpieza ────────────────────────────────────────────────────────────────
