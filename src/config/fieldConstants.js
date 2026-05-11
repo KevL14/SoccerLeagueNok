@@ -7,17 +7,17 @@
 
 export const FIELD = {
   // Dimensiones del mundo total (incluye márgenes fuera de banda)
-  WORLD_W: 120,
+  WORLD_W: 160,
   WORLD_H: 280,
-  X:       60, // Centro horizontal
+  X:       80, // Centro horizontal
   CY:      140, // Centro vertical (medio campo)
 
   // Campo activo (donde juegan los jugadores)
   TOP:    30,  
   BOTTOM: 250, 
-  LEFT:   10, 
-  RIGHT:  110,
-  WIDTH:  100, // RIGHT - LEFT
+  LEFT:   15, 
+  RIGHT:  145,
+  WIDTH:  130, // RIGHT - LEFT
   HEIGHT: 220, // BOTTOM - TOP
 
   // Porterías
@@ -27,7 +27,7 @@ export const FIELD = {
   GOAL_H:   15,
 
   // Áreas y Marcas
-  PEN_W: 56,
+  PEN_W: 70,
   PEN_H: 32,
   PEN_S_W: 24,
   PEN_S_H: 12,

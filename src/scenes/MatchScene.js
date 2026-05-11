@@ -136,7 +136,7 @@ export default class MatchScene extends Phaser.Scene {
 
     g.strokeRect(LEFT, TOP, WIDTH, HEIGHT);
     g.lineBetween(LEFT, CY, RIGHT, CY);
-    g.strokeCircle(X, CY, 9);
+    g.strokeCircle(X, CY, 18); // Círculo central al doble de tamaño
 
     // Punto central
     g.fillStyle(0xc8e88a, 1);
@@ -325,22 +325,35 @@ export default class MatchScene extends Phaser.Scene {
     this.ballOwner = null;
 
     const team    = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
+    const oppTeam = this.kickoffTeam === 'home' ? this.awayTeam : this.homeTeam;
+
     const players = team.getAllPlayers();
     players[7].sprite.setPosition(FIELD.X - 5, FIELD.CY);
     players[8].sprite.setPosition(FIELD.X + 5, FIELD.CY);
 
-    // Seleccionar automáticamente al que saca
-    if (this.kickoffTeam === 'home') {
-      this.homeTeam.setActivePlayer(7);
-    }
+    // Ajustar rivales para que no invadan el círculo ni se amontonen
+    const oppPlayers = oppTeam.getAllPlayers();
+    const oppSign = oppTeam.teamType === 'home' ? 1 : -1;
+    // Delantero central rival fuera del círculo (radio 18)
+    oppPlayers[8].sprite.setPosition(FIELD.X, FIELD.CY + oppSign * (-22));
+    // Mediocampista central rival más atrás
+    oppPlayers[5].sprite.setPosition(FIELD.X, FIELD.CY + oppSign * (-38));
+
+    // Asignar el centro delantero al usuario por defecto al iniciar
+    this.homeTeam.setActivePlayer(8);
 
     this.events.emit('showAnnouncement', 'PRESIONA PASE\nPARA INICIAR');
   }
 
   _executeKickoff() {
     this.isKickoff = true;
-    this.homeTeam.setFormation('offensive');
-    this.awayTeam.setFormation('offensive');
+    if (this.kickoffTeam === 'home') {
+      this.homeTeam.setFormation('offensive');
+      this.awayTeam.setFormation('defensive');
+    } else {
+      this.homeTeam.setFormation('defensive');
+      this.awayTeam.setFormation('offensive');
+    }
 
     const team    = this.kickoffTeam === 'home' ? this.homeTeam : this.awayTeam;
     const players = team.getAllPlayers();
@@ -539,6 +552,15 @@ export default class MatchScene extends Phaser.Scene {
     player.setBallPossession(true);
     this.events.emit('updatePossession', player.team);
 
+    // Cambiar mentalidades (formaciones) dinámicamente
+    if (player.team === 'home') {
+      this.homeTeam.setFormation('offensive');
+      this.awayTeam.setFormation('defensive');
+    } else {
+      this.homeTeam.setFormation('defensive');
+      this.awayTeam.setFormation('offensive');
+    }
+
     if (player.team === 'home') {
       const idx = this.homeTeam.getAllPlayers().indexOf(player);
       if (idx !== -1) this.homeTeam.setActivePlayer(idx);
@@ -566,7 +588,7 @@ export default class MatchScene extends Phaser.Scene {
     const offY = goalkeeper.team === 'home' ? 4 : -4;
     this.ball.setPosition(goalkeeper.sprite.x, goalkeeper.sprite.y + offY);
 
-    if (this.inputSystem) this.inputSystem.enabled = false;
+    if (this.inputSystem) this.inputSystem.setEnabled(false);
     if (this.aiSystem)    this.aiSystem.setGoalieHolding(goalkeeper.team);
 
     this.time.delayedCall(1200, () => {
@@ -576,7 +598,7 @@ export default class MatchScene extends Phaser.Scene {
       goalkeeper.holdingBall  = false;
       goalkeeper.saveCooldown = 800;
 
-      if (this.inputSystem) this.inputSystem.enabled = true;
+      if (this.inputSystem) this.inputSystem.setEnabled(true);
       if (this.aiSystem)    this.aiSystem.setGoalieHolding(null);
 
       goalkeeper.sprite.setTint(0xffffaa);
@@ -662,7 +684,7 @@ export default class MatchScene extends Phaser.Scene {
     this.awayTeam.goalkeeper.holdingBall       = false;
     this.awayTeam.goalkeeper.saveCooldown      = 0;
 
-    if (this.inputSystem) this.inputSystem.enabled = true;
+    if (this.inputSystem) this.inputSystem.setEnabled(true);
     if (this.aiSystem)    this.aiSystem.setGoalieHolding(null);
 
     this.releaseBallPossession();
@@ -701,27 +723,6 @@ export default class MatchScene extends Phaser.Scene {
       return;
     }
 
-    if (this.isWaitingForExtraTimeChoice) {
-      if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('W')) || Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('UP'))) {
-        this.extraTimeOption = 0;
-        this._showExtraTimeMenu();
-      } else if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('S')) || Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('DOWN'))) {
-        this.extraTimeOption = 1;
-        this._showExtraTimeMenu();
-      }
-      
-      if (this.input.keyboard.checkDown(this.input.keyboard.addKey('ENTER'), 500)) {
-        this.isWaitingForExtraTimeChoice = false;
-        this.events.emit('hideExtraTimeMenu'); // Reuses hideHalfTimeStats
-        if (this.extraTimeOption === 0) {
-          this._startExtraTime();
-        } else {
-          this.events.emit('showAnnouncement', 'MATCH ENDED');
-        }
-      }
-      return;
-    }
-
     if (this.matchPaused || this.isEntering) return;
 
     if (this.isWaitingForKickoff) {
@@ -738,7 +739,8 @@ export default class MatchScene extends Phaser.Scene {
     // Actualizar IA (con throttling para no acelerar el juego)
     this.aiSystem.update(delta);
 
-    if (!this.fullTimeReached) {
+    // Condición: el tiempo avanza si no es full time, O si estamos en prórroga y aún no se acaba.
+    if (!this.fullTimeReached || (this.isExtraTime && !this.extraTimeFullReached)) {
       this.matchTime += delta;
       this.events.emit('updateTimer', this.matchTime);
 
@@ -812,6 +814,7 @@ export default class MatchScene extends Phaser.Scene {
 
   _startHalfTime() {
     this.matchPaused = true;
+    if (this.inputSystem) this.inputSystem.setEnabled(false);
     this.homeTeam.stopAll();
     this.awayTeam.stopAll();
     this.ball.stop();
@@ -857,6 +860,7 @@ export default class MatchScene extends Phaser.Scene {
   _handleHalfTimeResume() {
     this.isWaitingForHalfTimeResume = false;
     this.matchPaused = false;
+    if (this.inputSystem) this.inputSystem.setEnabled(true);
     this.events.emit('hideHalfTimeStats');
     
     // El equipo que NO empezó sacando la 1ª parte, saca la 2ª (usualmente el Away)
@@ -878,6 +882,7 @@ export default class MatchScene extends Phaser.Scene {
 
   _startFullTime() {
     this.matchPaused = true;
+    if (this.inputSystem) this.inputSystem.setEnabled(false);
     this.events.emit('showAnnouncement', this.isExtraTime ? 'EXTRA TIME END' : 'FULL TIME');
     this.homeTeam.stopAll();
     this.awayTeam.stopAll();
@@ -916,14 +921,20 @@ export default class MatchScene extends Phaser.Scene {
 
       if (!this.isExtraTime) {
         this.time.delayedCall(3000, () => {
-          this.isWaitingForExtraTimeChoice = true;
-          this.extraTimeOption = 0; // 0 = Extra Time, 1 = End Match
-          this._showExtraTimeMenu();
+          this.scene.pause('MatchScene');
+          this.scene.launch('FullTimeScene', {
+            score: { home: homeScore, away: awayScore },
+            canPlayExtraTime: true
+          });
         });
       } else {
         // Empate después de la prórroga (luego se programarán penales)
         this.time.delayedCall(3000, () => {
-          this.events.emit('showHalfTimeStats', 'MATCH ENDED\n\nDRAW');
+          this.scene.pause('MatchScene');
+          this.scene.launch('FullTimeScene', {
+            score: { home: homeScore, away: awayScore },
+            canPlayExtraTime: false
+          });
         });
       }
       return;
@@ -960,20 +971,10 @@ export default class MatchScene extends Phaser.Scene {
     this.time.delayedCall(3000, () => {
       this.scene.pause('MatchScene');
       this.scene.launch('FullTimeScene', {
-        home: homeScore,
-        away: awayScore
+        score: { home: homeScore, away: awayScore },
+        canPlayExtraTime: false
       });
     });
-  }
-
-  _showExtraTimeMenu() {
-    const text = [
-      'DRAW',
-      '',
-      this.extraTimeOption === 0 ? '> EXTRA TIME <' : '  EXTRA TIME  ',
-      this.extraTimeOption === 1 ? '> END MATCH <' : '  END MATCH  '
-    ].join('\n');
-    this.events.emit('showExtraTimeMenu', text);
   }
 
   _startExtraTime() {

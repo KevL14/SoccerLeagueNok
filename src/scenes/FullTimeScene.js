@@ -12,17 +12,18 @@ export default class FullTimeScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.finalScore = data ?? { home: 0, away: 0 };
+    this.finalScore = data?.score ?? { home: 0, away: 0 };
+    this.canPlayExtraTime = data?.canPlayExtraTime || false;
   }
 
   create() {
     const cx = 40; // Centro horizontal (80/2)
     const cy = 40; // Centro vertical (80/2)
 
-    // Fondo Blanco con borde negro
-    this.add.rectangle(cx, cy, 76, 76, 0x000000);
-    this.add.rectangle(cx, cy, 74, 74, 0xffffff);
-    this.add.rectangle(cx, cy, 70, 70, 0xffffff).setStrokeStyle(1, 0xeeeeee);
+    // Fondo Blanco con borde negro (Más alto para caber las 3 opciones)
+    this.add.rectangle(cx, cy + 5, 76, 86, 0x000000);
+    this.add.rectangle(cx, cy + 5, 74, 84, 0xffffff);
+    this.add.rectangle(cx, cy + 5, 70, 80, 0xffffff).setStrokeStyle(1, 0xeeeeee);
 
     // Título (Negro sobre Blanco)
     this.drawPixelText(cx, cy - 28, 'FIN PARTIDO', 0x000000, true);
@@ -37,10 +38,12 @@ export default class FullTimeScene extends Phaser.Scene {
     this.drawPixelText(cx, cy - 4, `${this.finalScore.home}-${this.finalScore.away}`, 0x000000, true);
 
     // Opciones
-    this.options = [
-      { text: 'REINTENTAR', action: 'restart' },
-      { text: 'MENU', action: 'menu' }
-    ];
+    this.options = [];
+    if (this.canPlayExtraTime) {
+      this.options.push({ text: 'PRORROGA', action: 'extratime' });
+    }
+    this.options.push({ text: 'REINTENTAR', action: 'restart' });
+    this.options.push({ text: 'MENU', action: 'menu' });
     this.selectedIndex = 0;
     this.optionContainers = [];
 
@@ -93,14 +96,14 @@ export default class FullTimeScene extends Phaser.Scene {
       
       if (isSelected) {
         // Fondo de selección
-        const rect = this.add.rectangle(cx, cy + 12 + i * 12, 60, 9, 0x000000, 0.1);
+        const rect = this.add.rectangle(cx, cy + 12 + i * 11, 60, 9, 0x000000, 0.1);
         this.optionContainers.push(rect);
       }
 
       const color = isSelected ? 0x000000 : 0x888888;
       const label = opt.text;
       
-      const container = this.drawPixelText(cx, cy + 12 + i * 12, label, color, true);
+      const container = this.drawPixelText(cx, cy + 12 + i * 11, label, color, true);
       this.optionContainers.push(container);
     });
   }
@@ -108,7 +111,12 @@ export default class FullTimeScene extends Phaser.Scene {
   confirmSelection() {
     const action = this.options[this.selectedIndex].action;
     
-    if (action === 'restart') {
+    if (action === 'extratime') {
+      this.scene.stop('FullTimeScene');
+      this.scene.resume('MatchScene');
+      const matchScene = this.scene.get('MatchScene');
+      if (matchScene) matchScene._startExtraTime();
+    } else if (action === 'restart') {
       this.scene.stop('MatchScene');
       this.scene.stop('UIScene');
       this.scene.start('MatchScene');

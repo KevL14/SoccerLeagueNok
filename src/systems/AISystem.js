@@ -140,8 +140,12 @@ export default class AISystem {
         const timeSince = this.scene.time.now - (this.scene.lastPossessionChange || 0);
         const gracePeriod = timeSince < 700;
         const inZone = this._isBallInZone(index, ballPos, attackingDown);
+        const distToBall = Phaser.Math.Distance.Between(player.sprite.x, player.sprite.y, ballPos.x, ballPos.y);
 
-        if (player === nearestPlayer && inZone && !gracePeriod) {
+        // El jugador más cercano presiona si está en su zona, o si está lo suficientemente cerca (< 90px)
+        const shouldPress = player === nearestPlayer && (inZone || distToBall < 90);
+
+        if (shouldPress && !gracePeriod) {
           this._pressOpponent(player, ballOwner, ballPos, attackingDown);
         } else {
           this._defensiveZone(player, ballOwner, ballPos, attackingDown, index, team);

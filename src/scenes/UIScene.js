@@ -50,8 +50,6 @@ export default class UIScene extends Phaser.Scene {
     match.events.on('hideAnnouncement', this.hideAnnouncement, this);
     match.events.on('showHalfTimeStats', this.showHalfTimeStats, this);
     match.events.on('hideHalfTimeStats', this.hideHalfTimeStats, this);
-    match.events.on('showExtraTimeMenu', this.showExtraTimeMenu, this);
-    match.events.on('hideExtraTimeMenu', this.hideHalfTimeStats, this);
 
     this.events.on('shutdown', () => {
       match.events.off('updateScore', this.updateScore, this);
@@ -60,8 +58,6 @@ export default class UIScene extends Phaser.Scene {
       match.events.off('showAnnouncement', this.showAnnouncement, this);
       match.events.off('hideAnnouncement', this.hideAnnouncement, this);
       match.events.off('hideHalfTimeStats', this.hideHalfTimeStats, this);
-      match.events.off('showExtraTimeMenu', this.showExtraTimeMenu, this);
-      match.events.off('hideExtraTimeMenu', this.hideHalfTimeStats, this);
     });
   }
 
@@ -131,6 +127,11 @@ export default class UIScene extends Phaser.Scene {
   showHalfTimeStats(text) {
     this.hideAnnouncement();
     if (this.statsContainer) this.statsContainer.destroy();
+    if (this.statsBg) this.statsBg.destroy();
+
+    this.statsBg = this.add.rectangle(40, 44, 78, 58, 0x000000, 0.85);
+    this.statsBg.setOrigin(0.5).setDepth(31).setStrokeStyle(1, 0xffffff, 0.7);
+
     this.statsContainer = this.add.container(40, 45).setDepth(32);
     
     const lines = text.toUpperCase().split('\n');
@@ -141,12 +142,6 @@ export default class UIScene extends Phaser.Scene {
       const t = this.drawPixelText(0, i * 8 - 15, line, color, true);
       this.statsContainer.add(t);
     });
-    
-    if (!this.statsBg) {
-      this.statsBg = this.add.rectangle(40, 44, 78, 58, 0x000000, 0.85);
-      this.statsBg.setOrigin(0.5).setDepth(31).setStrokeStyle(1, 0xffffff, 0.7);
-    }
-    this.statsBg.setVisible(true);
   }
 
   hideHalfTimeStats() {
@@ -160,24 +155,5 @@ export default class UIScene extends Phaser.Scene {
     this.hideHalfTimeStats();
   }
 
-  showExtraTimeMenu(text) {
-    this.hideAnnouncement();
-    if (this.statsContainer) this.statsContainer.destroy();
-    this.statsContainer = this.add.container(40, 45).setDepth(32);
-    
-    const lines = text.toUpperCase().split('\n');
-    const colors = [0xffffff, 0xffffff, 0xffff00, 0xffff00]; // Highlights para las opciones
 
-    lines.forEach((line, i) => {
-      const color = colors[i] || 0xffffff;
-      const t = this.drawPixelText(0, i * 8 - 15, line, color, true);
-      this.statsContainer.add(t);
-    });
-    
-    if (!this.statsBg) {
-      this.statsBg = this.add.rectangle(40, 44, 78, 58, 0x000000, 0.85);
-      this.statsBg.setOrigin(0.5).setDepth(31).setStrokeStyle(1, 0xffffff, 0.7);
-    }
-    this.statsBg.setVisible(true);
-  }
 }

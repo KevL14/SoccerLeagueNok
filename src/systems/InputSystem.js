@@ -20,10 +20,10 @@ export default class InputSystem {
     this._moveDir      = { x: 0, y: 0 };
     this._kickCooldown = 0;
 
-    // Marcador visual para el jugador controlado
+    // Marcador visual para el jugador controlado (Más pequeño)
     this._activeMarker = this.scene.add.graphics();
     this._activeMarker.fillStyle(0xffff00, 1);
-    this._activeMarker.fillTriangle(0, 0, -3, -5, 3, -5); // Triangulito apuntando abajo
+    this._activeMarker.fillTriangle(0, 0, -1.5, -3, 1.5, -3); // Triangulito apuntando abajo
     this._activeMarker.setDepth(10);
 
     this._receiverMarker = this.scene.add.graphics();
@@ -35,6 +35,13 @@ export default class InputSystem {
     this.enabled = true;
 
     this._initKeys();
+  }
+
+  setEnabled(bool) {
+    this.enabled = bool;
+    if (!bool && this._activeMarker) {
+      this._activeMarker.setVisible(false);
+    }
   }
 
   /**
@@ -68,6 +75,12 @@ export default class InputSystem {
     // SPACE y X los procesaremos en el update para mayor responsividad o mantener eventos
     this._keySpace.on('down', () => { this._onShoot(); });
     this._keyX.on('down', () => { this._onPassOrTackle(); });
+  }
+
+  isJustPressed(action) {
+    if (action === 'pass') return Phaser.Input.Keyboard.JustDown(this._keyX);
+    if (action === 'shoot') return Phaser.Input.Keyboard.JustDown(this._keySpace);
+    return false;
   }
 
   // ─── Loop ──────────────────────────────────────────────────────────────────
@@ -120,6 +133,7 @@ export default class InputSystem {
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   _onShoot() {
+    if (!this.enabled) return;
     if (this._kickCooldown > 0) return;
 
     const player = this.homeTeam?.getActivePlayer();
@@ -159,6 +173,7 @@ export default class InputSystem {
   }
 
   _onPassOrTackle() {
+    if (!this.enabled) return;
     const player = this.homeTeam?.getActivePlayer();
     if (!player) return;
 
@@ -236,11 +251,13 @@ export default class InputSystem {
   }
 
   _onPause() {
+    if (!this.enabled) return;
     this.scene.scene.pause();
     this.scene.scene.launch('PauseScene');
   }
 
   _onPlayerSwitch() {
+    if (!this.enabled) return;
     if (!this.homeTeam || !this.ball) return;
     const team = this.homeTeam;
     const activePlayer = team.getActivePlayer();

@@ -12,44 +12,42 @@ import { FIELD } from '../config/fieldConstants.js';
  * @param {boolean} isHome
  * @param {boolean} isOffensive
  */
-const calcFormation = (isHome, isOffensive) => {
+const calcFormation = (isHome, isOffensive, scoreDiff) => {
   const CY   = FIELD.CY;
   const sign = isHome ? 1 : -1;
 
-  // Fase defensiva (Saque inicial o repliegue): todos estrictamente en su mitad
-  const DEF_Y = isHome ? FIELD.TOP  + 30 : FIELD.BOTTOM - 30;
-  const MID_Y = CY + sign * (-40); // Mitad de su propio campo
-  const FWD_Y = CY + sign * (-10); // Justo detrás de la línea de medio campo
+  // scoreDiff = (my score - enemy score). Si voy ganando (>0), me repliego un poco. Si voy perdiendo (<0), me adelanto.
+  const scoreOffset = Math.max(-20, Math.min(20, -scoreDiff * 5)); 
 
-  // Fase ofensiva: 4-3-3 proyectado ocupando todo el campo
-  const DEF_Y_O = CY + sign * (-30); // Defensas suben casi a medio campo
-  const MID_Y_O = CY + sign * 25;    // Medios suben a apoyar al campo rival
-  const FWD_Y_O = isHome ? FIELD.BOTTOM - 35 : FIELD.TOP  + 35; // Delanteros cerca del área rival
+  // Fase defensiva (más equilibrada, no tan profunda)
+  const DEF_Y = isHome ? FIELD.TOP  + 40 : FIELD.BOTTOM - 40;
+  const MID_Y = CY + sign * (-25); 
+  const FWD_Y = CY + sign * (0); 
 
-  const defY = isOffensive ? DEF_Y_O : DEF_Y;
-  const midY = isOffensive ? MID_Y_O : MID_Y;
-  const fwdY = isOffensive ? FWD_Y_O : FWD_Y;
+  // Fase ofensiva (más equilibrada, no se regalan tanto atrás)
+  const DEF_Y_O = CY + sign * (-25); 
+  const MID_Y_O = CY + sign * 15;    
+  const FWD_Y_O = isHome ? FIELD.BOTTOM - 45 : FIELD.TOP  + 45; 
+
+  let defY = isOffensive ? DEF_Y_O : DEF_Y;
+  let midY = isOffensive ? MID_Y_O : MID_Y;
+  let fwdY = isOffensive ? FWD_Y_O : FWD_Y;
+
+  // Aplicar influencia del marcador
+  defY += sign * scoreOffset;
+  midY += sign * scoreOffset;
+  fwdY += sign * scoreOffset;
 
   return [
-    // 4 Defensas (ocupan todo el ancho)
-    { x: 15, y: defY }, { x: 45, y: defY }, { x: 75, y: defY }, { x: 105, y: defY },
+    // 4 Defensas (más separados para el nuevo ancho)
+    { x: 25, y: defY }, { x: 55, y: defY }, { x: 105, y: defY }, { x: 135, y: defY },
     // 3 Mediocampistas
-    { x: 25, y: midY }, { x: 60, y: midY }, { x: 95, y: midY },
+    { x: 35, y: midY }, { x: 80, y: midY }, { x: 125, y: midY },
     // 3 Delanteros
-    { x: 25, y: fwdY }, { x: 60, y: fwdY }, { x: 95, y: fwdY },
+    { x: 35, y: fwdY }, { x: 80, y: fwdY }, { x: 125, y: fwdY },
   ];
 };
 
-const FORMATIONS = {
-  home: {
-    offensive: calcFormation(true,  true),
-    defensive: calcFormation(true,  false),
-  },
-  away: {
-    offensive: calcFormation(false, true),
-    defensive: calcFormation(false, false),
-  },
-};
 
 export default class Team {
   constructor(scene, name, teamType, goalkeeper) {
@@ -86,7 +84,10 @@ export default class Team {
   }
 
   resetPositions() {
-    const positions = FORMATIONS[this.teamType][this.currentFormation];
+    const isHome = this.teamType === 'home';
+    const isOffensive = this.currentFormation === 'offensive';
+    const positions = calcFormation(isHome, isOffensive, 0); // En saque inicial no hay offset de score
+    
     this.players.forEach((player, i) => {
       const pos = positions[i];
       if (!pos) return;
@@ -108,7 +109,22 @@ export default class Team {
   }
 
   getFormationPos(index) {
-    return FORMATIONS[this.teamType][this.currentFormation]?.[index] ?? null;
+    const isHome = this.teamType === 'home';
+    const isOffensive = this.currentFormation === 'offensive';
+    
+    // Calcular scoreDiff
+    let scoreDiff = 0;
+    if (this.scene && this.scene.scoreSystem) {
+      const homeScore = this.scene.scoreSystem.homeScore || 0;
+      const awayScore = this.scene.scoreSystem.awayScore || 0;
+      scoreDiff = isHome ? (homeScore - awayScore) : (awayScore - homeScore);
+    }
+    
+    // Evitar offset en el saque inicial
+    if (this.scene && this.scene.isKickoff) scoreDiff = 0;
+
+    const formation = calcFormation(isHome, isOffensive, scoreDiff);
+    return formation[index] ?? null;
   }
 
   getNearestPlayer(x, y) {
